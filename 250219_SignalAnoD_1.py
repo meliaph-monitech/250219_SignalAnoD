@@ -86,10 +86,6 @@ if uploaded_file:
         st.pyplot(fig)
     
     # Bead Segmentation Inputs
-    bead_counts = []
-    start_points = []
-    end_points = []
-    
     if "df" in st.session_state:
         df = st.session_state.df
         filter_column = st.selectbox("Select Filter Column", df.columns[:3])
@@ -110,7 +106,7 @@ if uploaded_file:
                 else:
                     i += 1
             bead_counts = [end - start + 1 for start, end in zip(start_points, end_points) if (end - start + 1) >= 10]
-            st.session_state.bead_counts = bead_counts
+            st.session_state.bead_segments = {selected_csv: list(zip(start_points, end_points))}
             
             # Heatmap Visualization
             heatmap_data = pd.DataFrame(bead_counts, columns=["Bead Count"])
@@ -119,12 +115,10 @@ if uploaded_file:
             st.pyplot(fig)
     
     # Anomaly Detection
-    if "df" in st.session_state and "bead_counts" in st.session_state:
-        df = st.session_state.df
-        bead_counts = st.session_state.bead_counts
+    if "df" in st.session_state and "bead_segments" in st.session_state:
         st.subheader("Anomaly Detection")
         selected_column = st.selectbox("Select Column for Anomaly Detection", df.columns)
-        selected_bead_number = st.selectbox("Select Bead Number", list(range(len(bead_counts))))
+        selected_bead_number = st.selectbox("Select Bead Number", list(range(len(st.session_state.bead_segments[selected_csv]))))
     
         if st.button("Start Detection"):
             bead_features = []
@@ -134,24 +128,28 @@ if uploaded_file:
                 with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                     with zip_ref.open(f"{selected_folder}/{csv_file}" if selected_folder != "root" else csv_file) as f:
                         df = pd.read_csv(f)
-                        if selected_bead_number < len(bead_counts):
-                            start, end = start_points[selected_bead_number], end_points[selected_bead_number]
+                        if csv_file in st.session_state.bead_segments:
+                            start, end = st.session_state.bead_segments[csv_file][selected_bead_number]
                             bead_signal = df[selected_column][start:end].values
-                            features = extract_advanced_features(bead_signal)
-                            bead_features.append(list(features.values()))
-                            bead_names.append(csv_file)
+                            if len(bead_signal) > 0:
+                                features = extract_advanced_features(bead_signal)
+                                bead_features.append(list(features.values()))
+                                bead_names.append(csv_file)
             
             # Convert to DataFrame
-            feature_df = pd.DataFrame(bead_features, columns=features.keys(), index=bead_names)
-            
-            # Apply Isolation Forest
-            model = IsolationForest()
-            predictions = model.fit_predict(feature_df)
-            feature_df['Anomaly'] = predictions
-            
-            # Visualize Results
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.plot(feature_df.index, feature_df['Anomaly'], marker='o', linestyle='')
-            ax.set_title("Anomaly Detection Results")
-            ax.set_ylabel("Anomaly Score")
-            st.pyplot(fig)
+            if bead_features:
+                feature_df = pd.DataFrame(bead_features, columns=features.keys(), index=bead_names)
+                
+                # Apply Isolation Forest
+                model = IsolationForest()
+                predictions = model.fit_predict(feature_df)
+                feature_df['Anomaly'] = predictions
+                
+                # Visualize Results
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.plot(feature_df.index, feature_df['Anomaly'], marker='o', linestyle='')
+                ax.set_title("Anomaly Detection Results")
+                ax.set_ylabel("Anomaly Score")
+                st.pyplot(fig)
+            else:
+                st.warning("No valid bead data available for anomaly detection.")
