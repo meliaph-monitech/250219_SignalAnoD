@@ -21,9 +21,6 @@ def extract_zip_structure(zip_path):
                     file_structure[folder] = []
                 if filename.endswith('.csv'):
                     file_structure[folder].append(filename)
-            else:
-                if file.endswith('.csv') and "root" not in file_structure:
-                    file_structure["root"] = [file]
     return file_structure
 
 # Feature extraction function
@@ -61,10 +58,10 @@ if uploaded_file:
     
     # Extract ZIP Structure
     file_structure = extract_zip_structure(zip_path)
-    folders = [f for f in file_structure.keys() if f != "root"] or ["root"]
+    folders = list(file_structure.keys())
     
     # Folder Selection
-    selected_folder = st.selectbox("Select Folder", folders) if len(folders) > 1 else folders[0]
+    selected_folder = st.selectbox("Select Folder", folders)
     
     # CSV File Selection
     csv_files = file_structure[selected_folder]
@@ -72,7 +69,7 @@ if uploaded_file:
     
     # Load Data Immediately
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        with zip_ref.open(f"{selected_folder}/{selected_csv}" if selected_folder != "root" else selected_csv) as f:
+        with zip_ref.open(f"{selected_folder}/{selected_csv}") as f:
             df = pd.read_csv(f)
             st.session_state.df = df
     
@@ -93,39 +90,47 @@ if uploaded_file:
     
         if st.button("Start Bead Segmentation"):
             bead_data = {}
+            bead_counts_per_file = {}
+            
             for csv_file in csv_files:
                 with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    with zip_ref.open(f"{selected_folder}/{csv_file}" if selected_folder != "root" else csv_file) as f:
+                    with zip_ref.open(f"{selected_folder}/{csv_file}") as f:
                         df = pd.read_csv(f)
                         filter_values = df[filter_column].astype(float)
-                        start_points, end_points = [], []
+                        bead_numbers = []
                         i = 0
                         while i < len(filter_values):
                             if filter_values[i] > filter_threshold:
                                 start = i
                                 while i < len(filter_values) and filter_values[i] > filter_threshold:
                                     i += 1
-                                end = i - 1
-                                start_points.append(start)
-                                end_points.append(end)
+                                bead_numbers.append(len(bead_numbers) + 1)
                             else:
                                 i += 1
-                        bead_counts = len(start_points)
-                        bead_data[csv_file] = bead_counts
+                        bead_counts_per_file[csv_file] = bead_numbers
             
-            st.session_state.bead_segments = bead_data
+            st.session_state.bead_segments = bead_counts_per_file
+            
+            # Creating heatmap data
+            all_bead_numbers = sorted(set(b for beads in bead_counts_per_file.values() for b in beads))
+            heatmap_data = pd.DataFrame(0, index=csv_files, columns=all_bead_numbers)
+            
+            for csv_file, bead_numbers in bead_counts_per_file.items():
+                for bead_number in bead_numbers:
+                    heatmap_data.loc[csv_file, bead_number] += 1
             
             # Heatmap Visualization
-            heatmap_data = pd.DataFrame.from_dict(bead_data, orient='index', columns=["Bead Count"])
             fig, ax = plt.subplots(figsize=(8, 6))
-            sns.heatmap(heatmap_data.T, cmap="jet", cbar=True, xticklabels=True, yticklabels=True)
+            sns.heatmap(heatmap_data, cmap="jet", cbar=True, xticklabels=True, yticklabels=True)
+            plt.xlabel("Bead Number")
+            plt.ylabel("CSV Files")
             st.pyplot(fig)
     
     # Anomaly Detection
     if "df" in st.session_state and "bead_segments" in st.session_state:
         st.subheader("Anomaly Detection")
         selected_column = st.selectbox("Select Column for Anomaly Detection", df.columns)
-        max_beads = max(st.session_state.bead_segments.values())
+        max_beads = max(len(beads) for beads in st.session_state.bead_segments.values())
         selected_bead_number = st.selectbox("Select Bead Number", list(range(1, max_beads + 1)))
     
         if st.button("Start Detection"):
@@ -135,10 +140,11 @@ if uploaded_file:
             
             for csv_file in csv_files:
                 with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    with zip_ref.open(f"{selected_folder}/{csv_file}" if selected_folder != "root" else csv_file) as f:
+                    with zip_ref.open(f"{selected_folder}/{csv_file}") as f:
                         df = pd.read_csv(f)
-                        if csv_file in st.session_state.bead_segments and st.session_state.bead_segments[csv_file] >= selected_bead_number:
-                            start, end = st.session_state.bead_segments[csv_file][selected_bead_number - 1]
+                        if selected_bead_number in st.session_state.bead_segments[csv_file]:
+                            start = df.index[df[filter_column] > filter_threshold][selected_bead_number - 1]
+                            end = start + 1
                             bead_signal = df[selected_column][start:end].values
                             raw_signals[csv_file] = bead_signal
                             if len(bead_signal) > 0:
