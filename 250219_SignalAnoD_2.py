@@ -89,7 +89,6 @@ if uploaded_file:
         filter_threshold = st.number_input("Set Filter Threshold", value=0.0)
     
         if st.button("Start Bead Segmentation"):
-            bead_data = {}
             bead_counts_per_file = {}
             
             for csv_file in csv_files:
@@ -98,16 +97,20 @@ if uploaded_file:
                         df = pd.read_csv(f)
                         filter_values = df[filter_column].astype(float)
                         bead_numbers = []
+                        bead_counts = {}
                         i = 0
+                        bead_idx = 1  # Start bead numbering from 1
                         while i < len(filter_values):
                             if filter_values[i] > filter_threshold:
                                 start = i
                                 while i < len(filter_values) and filter_values[i] > filter_threshold:
                                     i += 1
-                                bead_numbers.append(len(bead_numbers) + 1)
+                                bead_numbers.append(bead_idx)
+                                bead_counts[bead_idx] = bead_counts.get(bead_idx, 0) + (i - start)
+                                bead_idx += 1
                             else:
                                 i += 1
-                        bead_counts_per_file[csv_file] = bead_numbers
+                        bead_counts_per_file[csv_file] = bead_counts
             
             st.session_state.bead_segments = bead_counts_per_file
             
@@ -115,9 +118,9 @@ if uploaded_file:
             all_bead_numbers = sorted(set(b for beads in bead_counts_per_file.values() for b in beads))
             heatmap_data = pd.DataFrame(0, index=csv_files, columns=all_bead_numbers)
             
-            for csv_file, bead_numbers in bead_counts_per_file.items():
-                for bead_number in bead_numbers:
-                    heatmap_data.loc[csv_file, bead_number] += 1
+            for csv_file, bead_counts in bead_counts_per_file.items():
+                for bead_number, count in bead_counts.items():
+                    heatmap_data.loc[csv_file, bead_number] = count
             
             # Heatmap Visualization
             fig, ax = plt.subplots(figsize=(8, 6))
