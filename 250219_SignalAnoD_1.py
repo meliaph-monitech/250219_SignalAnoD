@@ -123,6 +123,7 @@ if uploaded_file:
         if st.button("Start Detection"):
             bead_features = []
             bead_names = []
+            raw_signals = {}
             
             for csv_file in csv_files:
                 with zipfile.ZipFile(zip_path, 'r') as zip_ref:
@@ -131,6 +132,7 @@ if uploaded_file:
                         if csv_file in st.session_state.bead_segments:
                             start, end = st.session_state.bead_segments[csv_file][selected_bead_number]
                             bead_signal = df[selected_column][start:end].values
+                            raw_signals[csv_file] = bead_signal
                             if len(bead_signal) > 0:
                                 features = extract_advanced_features(bead_signal)
                                 bead_features.append(list(features.values()))
@@ -145,11 +147,12 @@ if uploaded_file:
                 predictions = model.fit_predict(feature_df)
                 feature_df['Anomaly'] = predictions
                 
-                # Visualize Results
+                # Visualize Raw Signals
                 fig, ax = plt.subplots(figsize=(10, 6))
-                ax.plot(feature_df.index, feature_df['Anomaly'], marker='o', linestyle='')
-                ax.set_title("Anomaly Detection Results")
-                ax.set_ylabel("Anomaly Score")
+                for name, signal in raw_signals.items():
+                    color = 'red' if feature_df.loc[name, 'Anomaly'] == -1 else 'blue'
+                    ax.plot(signal, color=color, alpha=0.7)
+                ax.set_title("Raw Signals with Anomaly Detection")
                 st.pyplot(fig)
             else:
                 st.warning("No valid bead data available for anomaly detection.")
