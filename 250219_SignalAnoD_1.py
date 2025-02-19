@@ -86,6 +86,10 @@ if uploaded_file:
         st.pyplot(fig)
     
     # Bead Segmentation Inputs
+    bead_counts = []
+    start_points = []
+    end_points = []
+    
     if "df" in st.session_state:
         df = st.session_state.df
         filter_column = st.selectbox("Select Filter Column", df.columns[:3])
@@ -106,6 +110,7 @@ if uploaded_file:
                 else:
                     i += 1
             bead_counts = [end - start + 1 for start, end in zip(start_points, end_points) if (end - start + 1) >= 10]
+            st.session_state.bead_counts = bead_counts
             
             # Heatmap Visualization
             heatmap_data = pd.DataFrame(bead_counts, columns=["Bead Count"])
@@ -114,8 +119,9 @@ if uploaded_file:
             st.pyplot(fig)
     
     # Anomaly Detection
-    if "df" in st.session_state:
+    if "df" in st.session_state and "bead_counts" in st.session_state:
         df = st.session_state.df
+        bead_counts = st.session_state.bead_counts
         st.subheader("Anomaly Detection")
         selected_column = st.selectbox("Select Column for Anomaly Detection", df.columns)
         selected_bead_number = st.selectbox("Select Bead Number", list(range(len(bead_counts))))
