@@ -28,6 +28,9 @@ def extract_advanced_features(signal):
     features = {}
     n = len(signal)
     
+    if n == 0:
+        return None  # Skip if the signal is empty
+    
     # Time domain features
     features["mean"] = np.mean(signal)
     features["std_dev"] = np.std(signal)
@@ -40,8 +43,13 @@ def extract_advanced_features(signal):
     # Frequency domain features using FFT
     fft_values = fft(signal)
     fft_magnitude = np.abs(fft_values)[:n // 2]  # Take half spectrum (positive frequencies)
-    features["spectral_energy"] = np.sum(fft_magnitude ** 2) / len(fft_magnitude)
-    features["dominant_freq"] = np.argmax(fft_magnitude)  # Index of the dominant frequency
+    
+    if len(fft_magnitude) > 0:
+        features["spectral_energy"] = np.sum(fft_magnitude ** 2) / len(fft_magnitude)
+        features["dominant_freq"] = np.argmax(fft_magnitude)  # Index of the dominant frequency
+    else:
+        features["spectral_energy"] = 0
+        features["dominant_freq"] = 0  # Default to 0 if FFT fails
     
     return features
 
@@ -152,8 +160,9 @@ if uploaded_file:
                             raw_signals[csv_file] = bead_signal
                             if len(bead_signal) > 0:
                                 features = extract_advanced_features(bead_signal)
-                                bead_features.append(list(features.values()))
-                                bead_names.append(csv_file)
+                                if features:
+                                    bead_features.append(list(features.values()))
+                                    bead_names.append(csv_file)
             
             if bead_features:
                 feature_df = pd.DataFrame(bead_features, columns=features.keys(), index=bead_names)
