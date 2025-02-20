@@ -3,17 +3,12 @@ import zipfile
 import os
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 from sklearn.ensemble import IsolationForest
+from sklearn.decomposition import PCA
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft
 import numpy as np
-
-# def extract_zip(zip_path, extract_dir="extracted_csvs"):
-#     os.makedirs(extract_dir, exist_ok=True)
-#     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-#         zip_ref.extractall(extract_dir)
-#     csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
-#     return [os.path.join(extract_dir, f) for f in csv_files], extract_dir
 
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
     if os.path.exists(extract_dir):
@@ -47,7 +42,7 @@ def segment_beads(df, column, threshold):
 def extract_time_freq_features(signal):
     n = len(signal)
     if n == 0 or np.all(np.isnan(signal)):
-        return [0] * 9  # Return zero values for all features if signal is empty or NaN
+        return [0] * 9  
     mean_val = np.mean(signal)
     std_val = np.std(signal)
     min_val = np.min(signal)
@@ -62,7 +57,6 @@ def extract_time_freq_features(signal):
     return [mean_val, std_val, min_val, max_val, energy, skewness, kurt, spectral_energy, dominant_freq]
 
 st.set_page_config(layout="wide")
-
 st.title("Laser Welding Anomaly Detection")
 
 with st.sidebar:
@@ -106,50 +100,42 @@ with st.sidebar:
         
         if st.button("Run Isolation Forest") and "chosen_bead_data" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
-                anomaly_results_isoforest = {}
-                anomaly_scores_isoforest = {}
-                for bead_number in sorted(set(seg["bead_number"] for seg in st.session_state["chosen_bead_data"])):
-                    bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
-                    signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
-                    file_names = [seg["file"] for seg in bead_data]
-                    feature_matrix = np.array([extract_time_freq_features(signal) for signal in signals])
-                    iso_forest = IsolationForest(contamination=0.2, random_state=42)
-                    predictions = iso_forest.fit_predict(feature_matrix)
-                    anomaly_scores = -iso_forest.decision_function(feature_matrix)
-                    bead_results = {}
-                    bead_scores = {}
-                    for idx, prediction in enumerate(predictions):
-                        status = 'anomalous' if prediction == -1 else 'normal'
-                        bead_results[file_names[idx]] = status
-                        bead_scores[file_names[idx]] = anomaly_scores[idx]
-                    anomaly_results_isoforest[bead_number] = bead_results
-                    anomaly_scores_isoforest[bead_number] = bead_scores
+                feature_matrix = []
+                labels = []
+                for bead in st.session_state["chosen_bead_data"]:
+                    signal = bead["data"].iloc[:, 0].values
+                    features = extract_time_freq_features(signal)
+                    feature_matrix.append(features)
+                    labels.append(bead)
+                
+                feature_matrix = np.array(feature_matrix)
+                iso_forest = IsolationForest(contamination=0.2, random_state=42)
+                predictions = iso_forest.fit_predict(feature_matrix)
+                
+                for i, bead in enumerate(labels):
+                    bead["anomaly"] = predictions[i]
+                
+                st.session_state["analyzed_data"] = labels
+                st.session_state["show_line_plots"] = True
+                st.success("Anomaly detection complete!")
 
-st.write("## Visualization")
-if "chosen_bead_data" in st.session_state and "anomaly_results_isoforest" in locals():
-    for bead_number, results in anomaly_results_isoforest.items():
-        bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
-        file_names = [seg["file"] for seg in bead_data]
-        signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
+if "show_line_plots" in st.session_state and st.session_state["show_line_plots"]:
+    st.write("## Line Plot Visualization")
+    for bead in st.session_state["analyzed_data"]:
+        color = 'red' if bead["anomaly"] == -1 else 'black'
         fig = go.Figure()
-        for idx, signal in enumerate(signals):
-            file_name = file_names[idx]
-            status = anomaly_results_isoforest[bead_number][file_name]
-            anomaly_score = anomaly_scores_isoforest[bead_number][file_name]
-            color = 'red' if status == 'anomalous' else 'black'
-            fig.add_trace(go.Scatter(
-                y=signal,
-                mode='lines',
-                line=dict(color=color, width=1),
-                name=f"{file_name}",
-                hoverinfo='text',
-                text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
-            ))
-        fig.update_layout(
-            title=f"Bead Number {bead_number}: Anomaly Detection Results",
-            xaxis_title="Time Index",
-            yaxis_title="Signal Value",
-            showlegend=False
-        )
+        fig.add_trace(go.Scatter(y=bead["data"].iloc[:, 0], mode='lines', line=dict(color=color), name=f"Bead {bead['bead_number']}"))
         st.plotly_chart(fig)
-    st.success("Anomaly detection complete!")
+
+if st.button("Show 3D Scatter Plot") and "analyzed_data" in st.session_state:
+    st.session_state["show_line_plots"] = False
+    
+    feature_matrix = np.array([bead["data"].iloc[:, 0].values for bead in st.session_state["analyzed_data"]])
+    pca = PCA(n_components=3)
+    pca_result = pca.fit_transform(feature_matrix)
+    
+    df_pca = pd.DataFrame(pca_result, columns=["PC1", "PC2", "PC3"])
+    df_pca["Anomaly"] = ["Anomalous" if bead["anomaly"] == -1 else "Normal" for bead in st.session_state["analyzed_data"]]
+    
+    fig = px.scatter_3d(df_pca, x="PC1", y="PC2", z="PC3", color="Anomaly")
+    st.plotly_chart(fig)
