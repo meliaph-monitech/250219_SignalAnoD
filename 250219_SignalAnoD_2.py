@@ -101,7 +101,6 @@ with st.sidebar:
 if "chosen_bead_data" in st.session_state:
     if st.button("Run Isolation Forest"):
         with st.spinner("Running Isolation Forest..."):
-            st.session_state["show_scatter"] = False
             anomaly_results_isoforest = {}
             feature_matrix = []
             bead_labels = []
@@ -120,6 +119,14 @@ if "chosen_bead_data" in st.session_state:
             st.session_state["bead_labels"] = bead_labels
             st.success("Anomaly detection complete!")
 
+        for bead_data in st.session_state["chosen_bead_data"]:
+            signal = bead_data["data"].iloc[:, 0].values
+            file_name = bead_data["file"]
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(y=signal, mode='lines', name=file_name))
+            fig.update_layout(title=f"Signal from {file_name}", xaxis_title="Index", yaxis_title="Signal Value")
+            st.plotly_chart(fig)
+
 if st.button("Show 3D Scatter Plot") and "feature_matrix" in st.session_state:
     with st.spinner("Generating 3D Scatter Plot..."):
         pca = PCA(n_components=3)
@@ -130,4 +137,3 @@ if st.button("Show 3D Scatter Plot") and "feature_matrix" in st.session_state:
         fig = px.scatter_3d(df_plot, x="PC1", y="PC2", z="PC3", color=df_plot["Anomaly"], hover_data=["Bead"])
         fig.update_layout(title="3D PCA Scatter Plot", margin=dict(l=0, r=0, b=0, t=40))
         st.plotly_chart(fig)
-        st.session_state["show_scatter"] = True
