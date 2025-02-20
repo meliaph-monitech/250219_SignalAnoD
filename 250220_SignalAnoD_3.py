@@ -1,6 +1,7 @@
 import streamlit as st
 import zipfile
 import os
+import shutil
 import pandas as pd
 import plotly.graph_objects as go
 from sklearn.ensemble import IsolationForest
@@ -9,16 +10,19 @@ from scipy.fft import fft
 import numpy as np
 
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
+    # Clear previous extractions
     if os.path.exists(extract_dir):
-        for file in os.listdir(extract_dir):
-            os.remove(os.path.join(extract_dir, file))
-    else:
-        os.makedirs(extract_dir)
+        shutil.rmtree(extract_dir)
+    os.makedirs(extract_dir, exist_ok=True)
     
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(extract_dir)
+    
     csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
     return [os.path.join(extract_dir, f) for f in csv_files], extract_dir
+
+def reset_session():
+    st.session_state.clear()
 
 def segment_beads(df, column, threshold):
     start_indices = []
@@ -53,10 +57,11 @@ def extract_time_freq_features(signal):
     return [mean_val, std_val, min_val, max_val, energy, skewness, kurt, spectral_energy, dominant_freq]
 
 st.title("Laser Welding Anomaly Detection")
-uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
+uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"], on_change=reset_session)
 if uploaded_file:
     with open("temp.zip", "wb") as f:
         f.write(uploaded_file.getbuffer())
+    
     csv_files, extract_dir = extract_zip("temp.zip")
     st.success(f"Extracted {len(csv_files)} CSV files")
     
