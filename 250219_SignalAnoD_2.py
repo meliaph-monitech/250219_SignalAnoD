@@ -123,7 +123,20 @@ if "chosen_bead_data" in st.session_state and "anomaly_results_isoforest" in loc
         fig = go.Figure()
         for idx, signal in enumerate(signals):
             file_name = file_names[idx]
-            color = 'red' if file_name in results and results[file_name][-1] == -1 else 'black'
-            fig.add_trace(go.Scatter(y=signal, mode='lines', line=dict(color=color, width=1), name=f"{file_name}"))
-        fig.update_layout(title=f"Bead Number {bead_number}", xaxis_title="Time Index", yaxis_title="Signal Value", showlegend=False)
+            status = "anomalous" if file_name in results and results[file_name][-1] == -1 else "normal"
+            color = 'red' if status == "anomalous" else 'black'
+            fig.add_trace(go.Scatter(
+                y=signal,
+                mode='lines',
+                line=dict(color=color, width=1),
+                name=f"{file_name}",
+                hoverinfo='text',
+                text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {results[file_name][-1] if file_name in results else 0:.4f}"
+            ))
+        fig.update_layout(
+            title=f"Bead Number {bead_number}",
+            xaxis_title="Time Index",
+            yaxis_title="Signal Value",
+            showlegend=False
+        )
         st.plotly_chart(fig)
