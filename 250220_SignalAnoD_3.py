@@ -88,6 +88,10 @@ with st.sidebar:
                         bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
                         chosen_bead_data.append({"data": bead_segment, "file": entry["file"], "bead_number": entry["bead_number"], "start_index": entry["start_index"], "end_index": entry["end_index"]})
                 st.session_state["chosen_bead_data"] = chosen_bead_data
+                if not chosen_bead_data:
+                    st.warning("No beads selected. Please check the entered bead numbers.")
+                else:
+                    st.success("Beads selected successfully.")
         if st.button("Run Isolation Forest") and "chosen_bead_data" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
                 anomaly_results_isoforest = {}
@@ -110,6 +114,11 @@ with st.sidebar:
                     anomaly_scores_isoforest[bead_number] = bead_scores
                 st.session_state["anomaly_results"] = anomaly_results_isoforest
                 st.session_state["anomaly_scores"] = anomaly_scores_isoforest
+
+if "chosen_bead_data" in st.session_state:
+    st.write("### Selected Beads Data")
+    for bead in st.session_state["chosen_bead_data"]:
+        st.write(f"Bead {bead['bead_number']} from {bead['file']} ({bead['start_index']} - {bead['end_index']})")
 
 if "anomaly_results" in st.session_state:
     col1, col2 = st.columns([1, 3])
