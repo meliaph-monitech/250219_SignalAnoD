@@ -1,6 +1,5 @@
 import streamlit as st
 import zipfile
-import shutil
 import os
 import pandas as pd
 import plotly.graph_objects as go
@@ -11,8 +10,11 @@ import numpy as np
 
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
     if os.path.exists(extract_dir):
-        shutil.rmtree(extract_dir)  # Clear the directory before extracting new files
-    os.makedirs(extract_dir, exist_ok=True)
+        for file in os.listdir(extract_dir):
+            os.remove(os.path.join(extract_dir, file))
+    else:
+        os.makedirs(extract_dir)
+    
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(extract_dir)
     csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
