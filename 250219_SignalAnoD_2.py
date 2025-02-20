@@ -53,7 +53,7 @@ def extract_time_freq_features(signal):
     fft_values = fft(signal)
     fft_magnitude = np.abs(fft_values)[:n // 2]
     spectral_energy = np.sum(fft_magnitude ** 2) / len(fft_magnitude) if len(fft_magnitude) > 0 else 0
-    dominant_freq = np.argmax(fft_magnitude) if np.any(fft_magnitude > 0 else 0)
+    dominant_freq = np.argmax(fft_magnitude) if np.any(fft_magnitude > 0) else 0
     return [mean_val, std_val, min_val, max_val, energy, skewness, kurt, spectral_energy, dominant_freq]
 
 st.set_page_config(layout="wide")
