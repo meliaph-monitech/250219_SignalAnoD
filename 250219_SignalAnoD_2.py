@@ -98,45 +98,37 @@ with st.sidebar:
             st.session_state["chosen_bead_data"] = chosen_bead_data
             st.success("Beads selected successfully!")
 
-if st.button("Show 3D Scatter Plot") and "chosen_bead_data" in st.session_state:
-    with st.spinner("Generating 3D Scatter Plot..."):
-        feature_matrix = []
-        bead_labels = []
-        file_names = []
-        anomaly_status = []
-        all_features = []
-        
+if st.button("Run Isolation Forest") and "chosen_bead_data" in st.session_state:
+    with st.spinner("Running Isolation Forest..."):
+        anomaly_results_isoforest = {}
+        anomaly_scores_isoforest = {}
         for bead_data in st.session_state["chosen_bead_data"]:
             signal = bead_data["data"].iloc[:, 0].values
             features = extract_time_freq_features(signal)
-            file_name = bead_data["file"]
             bead_number = bead_data["bead_number"]
-            status = "anomalous" if bead_number in st.session_state.get("anomaly_results_isoforest", {}) else "normal"
+            file_name = bead_data["file"]
             
-            feature_matrix.append(features)
-            bead_labels.append(bead_number)
-            file_names.append(file_name)
-            anomaly_status.append("red" if status == "anomalous" else "black")
-            all_features.append(features)
+            iso_forest = IsolationForest(contamination=0.2, random_state=42)
+            prediction = iso_forest.fit_predict([features])[0]
+            anomaly_score = -iso_forest.decision_function([features])[0]
+            
+            status = "anomalous" if prediction == -1 else "normal"
+            anomaly_results_isoforest[bead_number] = {file_name: status}
+            anomaly_scores_isoforest[bead_number] = {file_name: anomaly_score}
         
-        feature_matrix = np.array(feature_matrix)
-        pca = PCA(n_components=3)
-        reduced_features = pca.fit_transform(feature_matrix)
-        
-        df_plot = pd.DataFrame(reduced_features, columns=["PC1", "PC2", "PC3"])
-        df_plot["File"] = file_names
-        df_plot["Bead"] = bead_labels
-        df_plot["Anomaly"] = anomaly_status
-        df_plot["Features"] = all_features
-        
-        fig = px.scatter_3d(df_plot, x="PC1", y="PC2", z="PC3", color="Anomaly", hover_data={"File": True, "Bead": True, "Anomaly": True, "Features": True})
-        fig.update_layout(title="3D PCA Scatter Plot", margin=dict(l=0, r=0, b=0, t=40))
-        st.plotly_chart(fig)
-        
-        st.session_state["show_scatter"] = True
-        
-if st.session_state.get("show_scatter", False):
-    st.write("3D Scatter Plot displayed. Line plots are hidden.")
-else:
+        st.session_state["anomaly_results_isoforest"] = anomaly_results_isoforest
+        st.session_state["anomaly_scores_isoforest"] = anomaly_scores_isoforest
+        st.success("Anomaly detection complete!")
+
+if not st.session_state.get("show_scatter", False):
     st.write("## Visualization")
-    # Original line plot visualization code remains unchanged
+    for bead_number, results in st.session_state.get("anomaly_results_isoforest", {}).items():
+        fig = go.Figure()
+        for file_name, status in results.items():
+            color = "red" if status == "anomalous" else "black"
+            fig.add_trace(go.Scatter(y=[0], mode='lines', line=dict(color=color), name=file_name))
+        fig.update_layout(title=f"Bead Number {bead_number}: Anomaly Detection Results")
+        st.plotly_chart(fig)
+
+if st.button("Show 3D Scatter Plot") and "chosen_bead_data" in st.session_state:
+    st.session_state["show_scatter"] = True
