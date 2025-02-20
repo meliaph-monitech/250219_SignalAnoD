@@ -53,7 +53,7 @@ def extract_time_freq_features(signal):
     fft_values = fft(signal)
     fft_magnitude = np.abs(fft_values)[:n // 2]
     spectral_energy = np.sum(fft_magnitude ** 2) / len(fft_magnitude) if len(fft_magnitude) > 0 else 0
-    dominant_freq = np.argmax(fft_magnitude) if np.any(fft_magnitude > 0) else 0
+    dominant_freq = np.argmax(fft_magnitude) if np.any(fft_magnitude > 0 else 0)
     return [mean_val, std_val, min_val, max_val, energy, skewness, kurt, spectral_energy, dominant_freq]
 
 st.set_page_config(layout="wide")
@@ -124,7 +124,10 @@ if "chosen_bead_data" in st.session_state:
             fig = go.Figure()
             for bead_data, anomaly in zip(st.session_state["chosen_bead_data"], anomaly_labels):
                 signal = bead_data["data"].iloc[:, 0].values
-                fig.add_trace(go.Scatter(y=signal, mode='lines', name=f'Bead {bead_data["bead_number"]}', line=dict(color='red' if anomaly == -1 else 'black')))
+                file_name = bead_data["file"]
+                anomaly_score = iso_forest.decision_function([extract_time_freq_features(signal)])[0]
+                status = "Anomalous" if anomaly == -1 else "Normal"
+                fig.add_trace(go.Scatter(y=signal, mode='lines', name=f'Bead {bead_data["bead_number"]}', line=dict(color='red' if anomaly == -1 else 'black'), text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"))
             st.plotly_chart(fig)
 
 if "feature_matrix" in st.session_state and st.button("Show 3D Scatter Plot"):
@@ -132,8 +135,9 @@ if "feature_matrix" in st.session_state and st.button("Show 3D Scatter Plot"):
     pca = PCA(n_components=3)
     transformed_features = pca.fit_transform(st.session_state["feature_matrix"])
     df_pca = pd.DataFrame(transformed_features, columns=["PC1", "PC2", "PC3"])
+    df_pca["File"] = [bead_data["file"] for bead_data in st.session_state["chosen_bead_data"]]
     df_pca["Bead"] = st.session_state["bead_labels"]
     df_pca["Anomaly"] = st.session_state["anomaly_labels"]
     df_pca["Color"] = df_pca["Anomaly"].apply(lambda x: "red" if x == -1 else "black")
-    fig = px.scatter_3d(df_pca, x="PC1", y="PC2", z="PC3", color=df_pca["Color"], hover_data=["Bead"])
+    fig = px.scatter_3d(df_pca, x="PC1", y="PC2", z="PC3", color=df_pca["Color"], hover_data=df_pca.columns)
     st.plotly_chart(fig)
