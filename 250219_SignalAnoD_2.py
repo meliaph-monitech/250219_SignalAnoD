@@ -3,6 +3,7 @@ import zipfile
 import os
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 from sklearn.ensemble import IsolationForest
 from sklearn.decomposition import PCA
 from scipy.stats import skew, kurtosis
@@ -41,7 +42,7 @@ def segment_beads(df, column, threshold):
 def extract_time_freq_features(signal):
     n = len(signal)
     if n == 0 or np.all(np.isnan(signal)):
-        return [0] * 9
+        return [0] * 9  
     mean_val = np.mean(signal)
     std_val = np.std(signal)
     min_val = np.min(signal)
@@ -99,37 +100,32 @@ with st.sidebar:
         
         if st.button("Run Isolation Forest") and "chosen_bead_data" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
-                anomaly_results = {}
+                st.session_state["show_scatter"] = False
+                anomaly_results_isoforest = {}
                 feature_matrix = []
-                bead_mapping = []
-                for bead in st.session_state["chosen_bead_data"]:
-                    signal = bead["data"].iloc[:, 0].values
+                bead_labels = []
+                for bead_data in st.session_state["chosen_bead_data"]:
+                    signal = bead_data["data"].iloc[:, 0].values
                     features = extract_time_freq_features(signal)
                     feature_matrix.append(features)
-                    bead_mapping.append(bead)
+                    bead_labels.append(bead_data["bead_number"])
                 
                 feature_matrix = np.array(feature_matrix)
                 iso_forest = IsolationForest(contamination=0.2, random_state=42)
                 predictions = iso_forest.fit_predict(feature_matrix)
-                st.session_state["pca_features"] = feature_matrix
-                st.session_state["pca_labels"] = predictions
-                st.session_state["bead_mapping"] = bead_mapping
                 
-        if st.button("Show 3D Scatter Plot") and "pca_features" in st.session_state:
-            with st.spinner("Generating 3D Scatter Plot..."):
-                pca = PCA(n_components=3)
-                pca_result = pca.fit_transform(st.session_state["pca_features"])
-                colors = ['red' if label == -1 else 'black' for label in st.session_state["pca_labels"]]
+                st.session_state["anomaly_labels"] = predictions
+                st.session_state["feature_matrix"] = feature_matrix
+                st.session_state["bead_labels"] = bead_labels
+                st.success("Anomaly detection complete!")
                 
-                fig = go.Figure()
-                for i in range(len(pca_result)):
-                    fig.add_trace(go.Scatter3d(
-                        x=[pca_result[i, 0]],
-                        y=[pca_result[i, 1]],
-                        z=[pca_result[i, 2]],
-                        mode='markers',
-                        marker=dict(size=5, color=colors[i]),
-                        text=f"Bead: {st.session_state['bead_mapping'][i]['bead_number']}\nFile: {st.session_state['bead_mapping'][i]['file']}"
-                    ))
-                fig.update_layout(title="3D PCA Scatter Plot of Welding Data")
-                st.plotly_chart(fig)
+        if st.button("Show 3D Scatter Plot") and "feature_matrix" in st.session_state:
+            st.session_state["show_scatter"] = True
+            pca = PCA(n_components=3)
+            transformed_features = pca.fit_transform(st.session_state["feature_matrix"])
+            df_pca = pd.DataFrame(transformed_features, columns=["PC1", "PC2", "PC3"])
+            df_pca["Bead"] = st.session_state["bead_labels"]
+            df_pca["Anomaly"] = st.session_state["anomaly_labels"]
+            df_pca["Color"] = df_pca["Anomaly"].apply(lambda x: "red" if x == -1 else "black")
+            fig = px.scatter_3d(df_pca, x="PC1", y="PC2", z="PC3", color=df_pca["Color"], hover_data=["Bead"])
+            st.plotly_chart(fig)
