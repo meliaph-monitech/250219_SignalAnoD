@@ -118,14 +118,14 @@ if "chosen_bead_data" in st.session_state:
             st.session_state["feature_matrix"] = np.array(feature_matrix)
             st.session_state["bead_labels"] = bead_labels
             st.success("Anomaly detection complete!")
-
+        
         for bead_data in st.session_state["chosen_bead_data"]:
             signal = bead_data["data"].iloc[:, 0].values
             file_name = bead_data["file"]
             status = "anomalous" if bead_data["bead_number"] in st.session_state["anomaly_results_isoforest"] else "normal"
             color = "red" if status == "anomalous" else "black"
             fig = go.Figure()
-            fig.add_trace(go.Scatter(y=signal, mode='lines', line=dict(color=color), name=file_name))
+            fig.add_trace(go.Scatter(y=signal, mode='lines', line=dict(color=color, width=1), name=file_name))
             fig.update_layout(title=f"Signal from {file_name}", xaxis_title="Index", yaxis_title="Signal Value")
             st.plotly_chart(fig)
 
