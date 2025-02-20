@@ -1,7 +1,6 @@
-## Signal AnoD
-
 import streamlit as st
 import zipfile
+import shutil
 import os
 import pandas as pd
 import plotly.graph_objects as go
@@ -11,6 +10,8 @@ from scipy.fft import fft
 import numpy as np
 
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
+    if os.path.exists(extract_dir):
+        shutil.rmtree(extract_dir)  # Clear the directory before extracting new files
     os.makedirs(extract_dir, exist_ok=True)
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(extract_dir)
