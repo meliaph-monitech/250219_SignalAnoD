@@ -105,7 +105,7 @@ with st.sidebar:
                     signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
                     file_names = [seg["file"] for seg in bead_data]
                     feature_matrix = np.array([extract_time_freq_features(signal) for signal in signals])
-                    iso_forest = IsolationForest(contamination=0.2, random_state=42)
+                    iso_forest = IsolationForest(random_state=42)
                     predictions = iso_forest.fit_predict(feature_matrix)
                     anomaly_scores = -iso_forest.decision_function(feature_matrix)
                     bead_results = {}
