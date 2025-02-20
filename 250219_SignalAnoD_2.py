@@ -122,8 +122,10 @@ if "chosen_bead_data" in st.session_state:
         for bead_data in st.session_state["chosen_bead_data"]:
             signal = bead_data["data"].iloc[:, 0].values
             file_name = bead_data["file"]
+            status = "anomalous" if bead_data["bead_number"] in st.session_state["anomaly_results_isoforest"] else "normal"
+            color = "red" if status == "anomalous" else "black"
             fig = go.Figure()
-            fig.add_trace(go.Scatter(y=signal, mode='lines', name=file_name))
+            fig.add_trace(go.Scatter(y=signal, mode='lines', line=dict(color=color), name=file_name))
             fig.update_layout(title=f"Signal from {file_name}", xaxis_title="Index", yaxis_title="Signal Value")
             st.plotly_chart(fig)
 
@@ -134,6 +136,6 @@ if st.button("Show 3D Scatter Plot") and "feature_matrix" in st.session_state:
         df_plot = pd.DataFrame(reduced_features, columns=["PC1", "PC2", "PC3"])
         df_plot["Bead"] = st.session_state["bead_labels"]
         df_plot["Anomaly"] = ["red" if bead in st.session_state["anomaly_results_isoforest"] else "black" for bead in df_plot["Bead"]]
-        fig = px.scatter_3d(df_plot, x="PC1", y="PC2", z="PC3", color=df_plot["Anomaly"], hover_data=["Bead"])
+        fig = px.scatter_3d(df_plot, x="PC1", y="PC2", z="PC3", color="Anomaly", hover_data=["Bead"])
         fig.update_layout(title="3D PCA Scatter Plot", margin=dict(l=0, r=0, b=0, t=40))
         st.plotly_chart(fig)
