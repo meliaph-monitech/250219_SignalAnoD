@@ -5,10 +5,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from sklearn.ensemble import IsolationForest
+from sklearn.decomposition import PCA
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft
 import numpy as np
-from sklearn.decomposition import PCA
 
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
     if os.path.exists(extract_dir):
@@ -42,7 +42,7 @@ def segment_beads(df, column, threshold):
 def extract_time_freq_features(signal):
     n = len(signal)
     if n == 0 or np.all(np.isnan(signal)):
-        return [0] * 9  # Return zero values for all features if signal is empty or NaN
+        return [0] * 9  
     mean_val = np.mean(signal)
     std_val = np.std(signal)
     min_val = np.min(signal)
@@ -57,7 +57,6 @@ def extract_time_freq_features(signal):
     return [mean_val, std_val, min_val, max_val, energy, skewness, kurt, spectral_energy, dominant_freq]
 
 st.set_page_config(layout="wide")
-
 st.title("Laser Welding Anomaly Detection")
 
 with st.sidebar:
@@ -102,30 +101,42 @@ with st.sidebar:
 if st.button("Show 3D Scatter Plot") and "chosen_bead_data" in st.session_state:
     with st.spinner("Generating 3D Scatter Plot..."):
         feature_matrix = []
-        metadata_list = []
+        bead_labels = []
+        file_names = []
+        anomaly_status = []
+        all_features = []
+        
         for bead_data in st.session_state["chosen_bead_data"]:
             signal = bead_data["data"].iloc[:, 0].values
             features = extract_time_freq_features(signal)
-            status = "anomalous" if bead_data["bead_number"] in st.session_state.get("anomaly_results_isoforest", {}) else "normal"
-            color = "red" if status == "anomalous" else "black"
-            metadata_list.append({
-                "file_name": bead_data["file"],
-                "bead_number": bead_data["bead_number"],
-                "status": status,
-                "color": color,
-                **dict(zip(["mean", "std", "min", "max", "energy", "skewness", "kurtosis", "spectral_energy", "dominant_freq"], features))
-            })
+            file_name = bead_data["file"]
+            bead_number = bead_data["bead_number"]
+            status = "anomalous" if bead_number in st.session_state.get("anomaly_results_isoforest", {}) else "normal"
+            
             feature_matrix.append(features)
+            bead_labels.append(bead_number)
+            file_names.append(file_name)
+            anomaly_status.append("red" if status == "anomalous" else "black")
+            all_features.append(features)
         
+        feature_matrix = np.array(feature_matrix)
         pca = PCA(n_components=3)
-        reduced_features = pca.fit_transform(np.array(feature_matrix))
-        df_plot = pd.DataFrame(reduced_features, columns=["PC1", "PC2", "PC3"])
-        df_metadata = pd.DataFrame(metadata_list)
-        df_plot = pd.concat([df_plot, df_metadata], axis=1)
+        reduced_features = pca.fit_transform(feature_matrix)
         
-        fig = px.scatter_3d(
-            df_plot, x="PC1", y="PC2", z="PC3", color="color",
-            hover_data=["file_name", "bead_number", "status", "mean", "std", "min", "max", "energy", "skewness", "kurtosis", "spectral_energy", "dominant_freq"]
-        )
+        df_plot = pd.DataFrame(reduced_features, columns=["PC1", "PC2", "PC3"])
+        df_plot["File"] = file_names
+        df_plot["Bead"] = bead_labels
+        df_plot["Anomaly"] = anomaly_status
+        df_plot["Features"] = all_features
+        
+        fig = px.scatter_3d(df_plot, x="PC1", y="PC2", z="PC3", color="Anomaly", hover_data={"File": True, "Bead": True, "Anomaly": True, "Features": True})
         fig.update_layout(title="3D PCA Scatter Plot", margin=dict(l=0, r=0, b=0, t=40))
         st.plotly_chart(fig)
+        
+        st.session_state["show_scatter"] = True
+        
+if st.session_state.get("show_scatter", False):
+    st.write("3D Scatter Plot displayed. Line plots are hidden.")
+else:
+    st.write("## Visualization")
+    # Original line plot visualization code remains unchanged
