@@ -9,11 +9,17 @@ from scipy.fft import fft
 import numpy as np
 
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
-    os.makedirs(extract_dir, exist_ok=True)
+    if os.path.exists(extract_dir):
+        for file in os.listdir(extract_dir):
+            os.remove(os.path.join(extract_dir, file))
+    else:
+        os.makedirs(extract_dir)
+    
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(extract_dir)
     csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
     return [os.path.join(extract_dir, f) for f in csv_files], extract_dir
+
 
 def segment_beads(df, column, threshold):
     start_indices = []
