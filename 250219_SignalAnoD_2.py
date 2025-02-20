@@ -3,7 +3,6 @@ import zipfile
 import os
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 from sklearn.ensemble import IsolationForest
 from sklearn.decomposition import PCA
 from scipy.stats import skew, kurtosis
@@ -42,7 +41,7 @@ def segment_beads(df, column, threshold):
 def extract_time_freq_features(signal):
     n = len(signal)
     if n == 0 or np.all(np.isnan(signal)):
-        return [0] * 9  
+        return [0] * 9
     mean_val = np.mean(signal)
     std_val = np.std(signal)
     min_val = np.min(signal)
@@ -100,42 +99,37 @@ with st.sidebar:
         
         if st.button("Run Isolation Forest") and "chosen_bead_data" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
+                anomaly_results = {}
                 feature_matrix = []
-                labels = []
+                bead_mapping = []
                 for bead in st.session_state["chosen_bead_data"]:
                     signal = bead["data"].iloc[:, 0].values
                     features = extract_time_freq_features(signal)
                     feature_matrix.append(features)
-                    labels.append(bead)
+                    bead_mapping.append(bead)
                 
                 feature_matrix = np.array(feature_matrix)
                 iso_forest = IsolationForest(contamination=0.2, random_state=42)
                 predictions = iso_forest.fit_predict(feature_matrix)
+                st.session_state["pca_features"] = feature_matrix
+                st.session_state["pca_labels"] = predictions
+                st.session_state["bead_mapping"] = bead_mapping
                 
-                for i, bead in enumerate(labels):
-                    bead["anomaly"] = predictions[i]
+        if st.button("Show 3D Scatter Plot") and "pca_features" in st.session_state:
+            with st.spinner("Generating 3D Scatter Plot..."):
+                pca = PCA(n_components=3)
+                pca_result = pca.fit_transform(st.session_state["pca_features"])
+                colors = ['red' if label == -1 else 'black' for label in st.session_state["pca_labels"]]
                 
-                st.session_state["analyzed_data"] = labels
-                st.session_state["show_line_plots"] = True
-                st.success("Anomaly detection complete!")
-
-if "show_line_plots" in st.session_state and st.session_state["show_line_plots"]:
-    st.write("## Line Plot Visualization")
-    for bead in st.session_state["analyzed_data"]:
-        color = 'red' if bead["anomaly"] == -1 else 'black'
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(y=bead["data"].iloc[:, 0], mode='lines', line=dict(color=color), name=f"Bead {bead['bead_number']}"))
-        st.plotly_chart(fig)
-
-if st.button("Show 3D Scatter Plot") and "analyzed_data" in st.session_state:
-    st.session_state["show_line_plots"] = False
-    
-    feature_matrix = np.array([bead["data"].iloc[:, 0].values for bead in st.session_state["analyzed_data"]])
-    pca = PCA(n_components=3)
-    pca_result = pca.fit_transform(feature_matrix)
-    
-    df_pca = pd.DataFrame(pca_result, columns=["PC1", "PC2", "PC3"])
-    df_pca["Anomaly"] = ["Anomalous" if bead["anomaly"] == -1 else "Normal" for bead in st.session_state["analyzed_data"]]
-    
-    fig = px.scatter_3d(df_pca, x="PC1", y="PC2", z="PC3", color="Anomaly")
-    st.plotly_chart(fig)
+                fig = go.Figure()
+                for i in range(len(pca_result)):
+                    fig.add_trace(go.Scatter3d(
+                        x=[pca_result[i, 0]],
+                        y=[pca_result[i, 1]],
+                        z=[pca_result[i, 2]],
+                        mode='markers',
+                        marker=dict(size=5, color=colors[i]),
+                        text=f"Bead: {st.session_state['bead_mapping'][i]['bead_number']}\nFile: {st.session_state['bead_mapping'][i]['file']}"
+                    ))
+                fig.update_layout(title="3D PCA Scatter Plot of Welding Data")
+                st.plotly_chart(fig)
