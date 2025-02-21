@@ -2,157 +2,133 @@ import streamlit as st
 import zipfile
 import os
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scipy.stats import skew, kurtosis
-from scipy.fftpack import fft
+import plotly.graph_objects as go
 from sklearn.ensemble import IsolationForest
+from scipy.stats import skew, kurtosis
+from scipy.fft import fft
+import numpy as np
 
-# Function to extract ZIP structure
-def extract_zip_structure(zip_path):
+def extract_zip(zip_path, extract_dir="extracted_csvs"):
+    if os.path.exists(extract_dir):
+        for file in os.listdir(extract_dir):
+            os.remove(os.path.join(extract_dir, file))
+    else:
+        os.makedirs(extract_dir)
+    
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        file_structure = {"root": []}
-        for file in zip_ref.namelist():
-            parts = file.split('/')
-            if len(parts) > 1:
-                folder, filename = parts[0], parts[-1]
-                if folder not in file_structure:
-                    file_structure[folder] = []
-                if filename.endswith('.csv'):
-                    file_structure[folder].append(filename)
-            else:
-                if file.endswith('.csv'):
-                    file_structure["root"].append(file)
-    return file_structure
+        zip_ref.extractall(extract_dir)
+    csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
+    return [os.path.join(extract_dir, f) for f in csv_files], extract_dir
 
-# Feature extraction function
-def extract_advanced_features(signal):
-    features = {}
+
+def segment_beads(df, column, threshold):
+    start_indices = []
+    end_indices = []
+    signal = df[column].to_numpy()
+    i = 0
+    while i < len(signal):
+        if signal[i] > threshold:
+            start = i
+            while i < len(signal) and signal[i] > threshold:
+                i += 1
+            end = i - 1
+            start_indices.append(start)
+            end_indices.append(end)
+        else:
+            i += 1
+    return list(zip(start_indices, end_indices))
+
+def extract_time_freq_features(signal):
     n = len(signal)
-
-    # Time domain features
-    features["mean"] = np.mean(signal)
-    features["std_dev"] = np.std(signal)
-    features["min"] = np.min(signal)
-    features["max"] = np.max(signal)
-    features["energy"] = np.sum(np.square(signal)) / n
-    features["skewness"] = skew(signal)
-    features["kurt"] = kurtosis(signal)
-
-    # Frequency domain features using FFT
+    mean_val = np.mean(signal)
+    std_val = np.std(signal)
+    min_val = np.min(signal)
+    max_val = np.max(signal)
+    energy = np.sum(np.square(signal)) / n
+    skewness = skew(signal)
+    kurt = kurtosis(signal)
     fft_values = fft(signal)
-    fft_magnitude = np.abs(fft_values)[:n // 2]  # Take half spectrum (positive frequencies)
-    features["spectral_energy"] = np.sum(fft_magnitude ** 2) / len(fft_magnitude)
-    features["dominant_freq"] = np.argmax(fft_magnitude)  # Index of the dominant frequency
+    fft_magnitude = np.abs(fft_values)[:n // 2]
+    spectral_energy = np.sum(fft_magnitude ** 2) / len(fft_magnitude)
+    dominant_freq = np.argmax(fft_magnitude)
+    return [mean_val, std_val, min_val, max_val, energy, skewness, kurt, spectral_energy, dominant_freq]
 
-    return features
+st.set_page_config(layout="wide")
 
-# Streamlit UI Setup
-st.title("Laser Welding Data Visualization & Anomaly Detection")
+st.title("Laser Welding Anomaly Detection")
 
-# Upload ZIP File
-uploaded_file = st.file_uploader("Upload ZIP file", type=["zip"])
-
-if uploaded_file:
-    zip_path = "temp.zip"
-    with open(zip_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    
-    # Extract ZIP Structure
-    file_structure = extract_zip_structure(zip_path)
-    folders = list(file_structure.keys())
-    
-    # Folder Selection
-    selected_folder = st.selectbox("Select Folder", folders) if len(folders) > 1 else folders[0]
-    
-    # CSV File Selection
-    csv_files = file_structure[selected_folder]
-    selected_csv = st.selectbox("Select CSV File", csv_files)
-    
-    # Load Data Immediately
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        with zip_ref.open(f"{selected_folder}/{selected_csv}" if selected_folder != "root" else selected_csv) as f:
-            df = pd.read_csv(f)
-            st.session_state.df = df
-    
-    # See Raw Data Button
-    if st.button("See Raw Data"):
-        # Plot Raw Data
-        fig, axes = plt.subplots(3, 1, figsize=(10, 8))
-        for i, col in enumerate(df.columns[:3]):
-            axes[i].plot(df[col])
-            axes[i].set_title(col)
-        st.pyplot(fig)
-    
-    # Bead Segmentation Inputs
-    if "df" in st.session_state:
-        df = st.session_state.df
-        filter_column = st.selectbox("Select Filter Column", df.columns[:3])
-        filter_threshold = st.number_input("Set Filter Threshold", value=0.0)
-    
-        if st.button("Start Bead Segmentation"):
-            filter_values = df[filter_column].astype(float)
-            start_points, end_points = [], []
-            i = 0
-            while i < len(filter_values):
-                if filter_values[i] > filter_threshold:
-                    start = i
-                    while i < len(filter_values) and filter_values[i] > filter_threshold:
-                        i += 1
-                    end = i - 1
-                    start_points.append(start)
-                    end_points.append(end)
-                else:
-                    i += 1
-            bead_counts = [end - start + 1 for start, end in zip(start_points, end_points) if (end - start + 1) >= 10]
-            st.session_state.bead_segments = {selected_csv: list(zip(start_points, end_points))}
-            
-            # Heatmap Visualization
-            heatmap_data = pd.DataFrame(bead_counts, columns=["Bead Count"])
-            fig, ax = plt.subplots(figsize=(8, 6))
-            sns.heatmap(heatmap_data.T, cmap="jet", cbar=True, xticklabels=False)
-            st.pyplot(fig)
-    
-    # Anomaly Detection
-    if "df" in st.session_state and "bead_segments" in st.session_state:
-        st.subheader("Anomaly Detection")
-        selected_column = st.selectbox("Select Column for Anomaly Detection", df.columns)
-        selected_bead_number = st.selectbox("Select Bead Number", list(range(len(st.session_state.bead_segments[selected_csv]))))
-    
-        if st.button("Start Detection"):
-            bead_features = []
-            bead_names = []
-            raw_signals = {}
-            
-            for csv_file in csv_files:
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    with zip_ref.open(f"{selected_folder}/{csv_file}" if selected_folder != "root" else csv_file) as f:
-                        df = pd.read_csv(f)
-                        if csv_file in st.session_state.bead_segments:
-                            start, end = st.session_state.bead_segments[csv_file][selected_bead_number]
-                            bead_signal = df[selected_column][start:end].values
-                            raw_signals[csv_file] = bead_signal
-                            if len(bead_signal) > 0:
-                                features = extract_advanced_features(bead_signal)
-                                bead_features.append(list(features.values()))
-                                bead_names.append(csv_file)
-            
-            # Convert to DataFrame
-            if bead_features:
-                feature_df = pd.DataFrame(bead_features, columns=features.keys(), index=bead_names)
+# Upload training (normal) data
+with st.sidebar:
+    uploaded_training_file = st.file_uploader("Upload a ZIP file containing CSV files (Training Data - Normal)", type=["zip"], key="train")
+    if uploaded_training_file:
+        with open("temp_train.zip", "wb") as f:
+            f.write(uploaded_training_file.getbuffer())
+        csv_train_files, extract_train_dir = extract_zip("temp_train.zip")
+        st.success(f"Extracted {len(csv_train_files)} training CSV files")
+        
+        df_sample = pd.read_csv(csv_train_files[0])
+        columns = df_sample.columns.tolist()
+        filter_column = st.selectbox("Select column for filtering", columns, key="column")
+        threshold = st.number_input("Enter filtering threshold", value=0.0, key="threshold")
+        
+        if st.button("Train Model"):
+            with st.spinner("Training on normal data..."):
+                normal_bead_data = {}
+                for file in csv_train_files:
+                    df = pd.read_csv(file)
+                    segments = segment_beads(df, filter_column, threshold)
+                    for bead_num, (start, end) in enumerate(segments, start=1):
+                        signal = df.iloc[start:end + 1][filter_column].values
+                        if bead_num not in normal_bead_data:
+                            normal_bead_data[bead_num] = []
+                        normal_bead_data[bead_num].append(extract_time_freq_features(signal))
                 
-                # Apply Isolation Forest
-                model = IsolationForest()
-                predictions = model.fit_predict(feature_df)
-                feature_df['Anomaly'] = predictions
+                # Train Isolation Forest on normal data
+                trained_models = {}
+                for bead_num, features in normal_bead_data.items():
+                    feature_matrix = np.array(features)
+                    iso_forest = IsolationForest(contamination=0.0, random_state=42)
+                    iso_forest.fit(feature_matrix)
+                    trained_models[bead_num] = iso_forest
                 
-                # Visualize Raw Signals
-                fig, ax = plt.subplots(figsize=(10, 6))
-                for name, signal in raw_signals.items():
-                    color = 'red' if feature_df.loc[name, 'Anomaly'] == -1 else 'blue'
-                    ax.plot(signal, color=color, alpha=0.7)
-                ax.set_title("Raw Signals with Anomaly Detection")
-                st.pyplot(fig)
-            else:
-                st.warning("No valid bead data available for anomaly detection.")
+                st.session_state["trained_models"] = trained_models
+                st.success("Model trained on normal data!")
+
+# Upload new data for anomaly detection
+uploaded_new_file = st.file_uploader("Upload a ZIP file containing CSV files (New Data for Anomaly Detection)", type=["zip"], key="new")
+if uploaded_new_file and "trained_models" in st.session_state:
+    with open("temp_new.zip", "wb") as f:
+        f.write(uploaded_new_file.getbuffer())
+    csv_new_files, extract_new_dir = extract_zip("temp_new.zip")
+    st.success(f"Extracted {len(csv_new_files)} new CSV files")
+    
+    if st.button("Detect Anomalies"):
+        with st.spinner("Detecting anomalies..."):
+            anomaly_results = {}
+            for file in csv_new_files:
+                df = pd.read_csv(file)
+                segments = segment_beads(df, filter_column, threshold)
+                for bead_num, (start, end) in enumerate(segments, start=1):
+                    signal = df.iloc[start:end + 1][filter_column].values
+                    if bead_num in st.session_state["trained_models"]:
+                        features = np.array([extract_time_freq_features(signal)])
+                        model = st.session_state["trained_models"][bead_num]
+                        prediction = model.predict(features)[0]
+                        status = 'anomalous' if prediction == -1 else 'normal'
+                        anomaly_results.setdefault(bead_num, []).append((file, status))
+            
+            st.session_state["anomaly_results"] = anomaly_results
+            st.success("Anomaly detection complete!")
+
+# Visualization
+if "anomaly_results" in st.session_state:
+    for bead_num, results in st.session_state["anomaly_results"].items():
+        fig = go.Figure()
+        for file, status in results:
+            df = pd.read_csv(file)
+            signal = df[filter_column].values
+            color = 'red' if status == 'anomalous' else 'black'
+            fig.add_trace(go.Scatter(y=signal, mode='lines', line=dict(color=color, width=1), name=f"{file} ({status})"))
+        fig.update_layout(title=f"Bead Number {bead_num}: Anomaly Detection Results", xaxis_title="Time Index", yaxis_title="Signal Value", showlegend=True)
+        st.plotly_chart(fig)
+    st.success("Visualization complete!")
