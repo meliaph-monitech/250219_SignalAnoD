@@ -20,6 +20,7 @@ def extract_zip(zip_path, extract_dir="extracted_csvs"):
     csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
     return [os.path.join(extract_dir, f) for f in csv_files], extract_dir
 
+
 def segment_beads(df, column, threshold):
     start_indices = []
     end_indices = []
@@ -38,9 +39,6 @@ def segment_beads(df, column, threshold):
     return list(zip(start_indices, end_indices))
 
 def extract_time_freq_features(signal):
-    if len(signal) == 0:
-        return None  # Return None for empty signals
-    
     n = len(signal)
     mean_val = np.mean(signal)
     std_val = np.std(signal)
@@ -49,15 +47,14 @@ def extract_time_freq_features(signal):
     energy = np.sum(np.square(signal)) / n
     skewness = skew(signal)
     kurt = kurtosis(signal)
-    
     fft_values = fft(signal)
     fft_magnitude = np.abs(fft_values)[:n // 2]
-    spectral_energy = np.sum(fft_magnitude ** 2) / len(fft_magnitude) if len(fft_magnitude) > 0 else 0
-    dominant_freq = np.argmax(fft_magnitude) if len(fft_magnitude) > 0 else 0
-    
+    spectral_energy = np.sum(fft_magnitude ** 2) / len(fft_magnitude)
+    dominant_freq = np.argmax(fft_magnitude)
     return [mean_val, std_val, min_val, max_val, energy, skewness, kurt, spectral_energy, dominant_freq]
 
 st.set_page_config(layout="wide")
+
 st.title("Laser Welding Anomaly Detection")
 
 with st.sidebar:
@@ -107,9 +104,7 @@ with st.sidebar:
                     bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
                     signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
                     file_names = [seg["file"] for seg in bead_data]
-                    feature_matrix = np.array([extract_time_freq_features(signal) for signal in signals if extract_time_freq_features(signal) is not None])
-                    if feature_matrix.shape[0] == 0:
-                        continue
+                    feature_matrix = np.array([extract_time_freq_features(signal) for signal in signals])
                     iso_forest = IsolationForest(random_state=42)
                     predictions = iso_forest.fit_predict(feature_matrix)
                     anomaly_scores = -iso_forest.decision_function(feature_matrix)
@@ -122,4 +117,31 @@ with st.sidebar:
                     anomaly_results_isoforest[bead_number] = bead_results
                     anomaly_scores_isoforest[bead_number] = bead_scores
 
-st.success("Anomaly detection complete!")
+st.write("## Visualization")
+if "chosen_bead_data" in st.session_state and "anomaly_results_isoforest" in locals():
+    for bead_number, results in anomaly_results_isoforest.items():
+        bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
+        file_names = [seg["file"] for seg in bead_data]
+        signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
+        fig = go.Figure()
+        for idx, signal in enumerate(signals):
+            file_name = file_names[idx]
+            status = anomaly_results_isoforest[bead_number][file_name]
+            anomaly_score = anomaly_scores_isoforest[bead_number][file_name]
+            color = 'red' if status == 'anomalous' else 'black'
+            fig.add_trace(go.Scatter(
+                y=signal,
+                mode='lines',
+                line=dict(color=color, width=1),
+                name=f"{file_name}",
+                hoverinfo='text',
+                text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
+            ))
+        fig.update_layout(
+            title=f"Bead Number {bead_number}: Anomaly Detection Results",
+            xaxis_title="Time Index",
+            yaxis_title="Signal Value",
+            showlegend=False
+        )
+        st.plotly_chart(fig)
+    st.success("Anomaly detection complete!")
