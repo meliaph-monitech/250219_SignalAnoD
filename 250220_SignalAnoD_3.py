@@ -3,9 +3,7 @@ import zipfile
 import os
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 from sklearn.ensemble import IsolationForest
-from sklearn.decomposition import PCA
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft
 import numpy as np
@@ -23,7 +21,8 @@ def extract_zip(zip_path, extract_dir="extracted_csvs"):
     return [os.path.join(extract_dir, f) for f in csv_files], extract_dir
 
 def segment_beads(df, column, threshold):
-    start_indices, end_indices = [], []
+    start_indices = []
+    end_indices = []
     signal = df[column].to_numpy()
     i = 0
     while i < len(signal):
@@ -39,23 +38,22 @@ def segment_beads(df, column, threshold):
     return list(zip(start_indices, end_indices))
 
 def extract_time_freq_features(signal):
-    signal = np.nan_to_num(signal)  # Replace NaN with 0
-    n = len(signal)
-    if n == 0 or np.all(signal == 0):
-        return [0] * 9  # Return zeros if signal is empty or all zeros
+    if len(signal) == 0:
+        return None  # Return None for empty signals
     
+    n = len(signal)
     mean_val = np.mean(signal)
     std_val = np.std(signal)
     min_val = np.min(signal)
     max_val = np.max(signal)
     energy = np.sum(np.square(signal)) / n
-    skewness = skew(signal, nan_policy='omit')
-    kurt = kurtosis(signal, nan_policy='omit')
+    skewness = skew(signal)
+    kurt = kurtosis(signal)
     
     fft_values = fft(signal)
     fft_magnitude = np.abs(fft_values)[:n // 2]
     spectral_energy = np.sum(fft_magnitude ** 2) / len(fft_magnitude) if len(fft_magnitude) > 0 else 0
-    dominant_freq = np.argmax(fft_magnitude) if np.any(fft_magnitude > 0) else 0
+    dominant_freq = np.argmax(fft_magnitude) if len(fft_magnitude) > 0 else 0
     
     return [mean_val, std_val, min_val, max_val, energy, skewness, kurt, spectral_energy, dominant_freq]
 
@@ -100,29 +98,28 @@ with st.sidebar:
                     chosen_bead_data.append({"data": bead_segment, "file": entry["file"], "bead_number": entry["bead_number"], "start_index": entry["start_index"], "end_index": entry["end_index"]})
             st.session_state["chosen_bead_data"] = chosen_bead_data
             st.success("Beads selected successfully!")
+        
+        if st.button("Run Isolation Forest") and "chosen_bead_data" in st.session_state:
+            with st.spinner("Running Isolation Forest..."):
+                anomaly_results_isoforest = {}
+                anomaly_scores_isoforest = {}
+                for bead_number in sorted(set(seg["bead_number"] for seg in st.session_state["chosen_bead_data"])):
+                    bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
+                    signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
+                    file_names = [seg["file"] for seg in bead_data]
+                    feature_matrix = np.array([extract_time_freq_features(signal) for signal in signals if extract_time_freq_features(signal) is not None])
+                    if feature_matrix.shape[0] == 0:
+                        continue
+                    iso_forest = IsolationForest(random_state=42)
+                    predictions = iso_forest.fit_predict(feature_matrix)
+                    anomaly_scores = -iso_forest.decision_function(feature_matrix)
+                    bead_results = {}
+                    bead_scores = {}
+                    for idx, prediction in enumerate(predictions):
+                        status = 'anomalous' if prediction == -1 else 'normal'
+                        bead_results[file_names[idx]] = status
+                        bead_scores[file_names[idx]] = anomaly_scores[idx]
+                    anomaly_results_isoforest[bead_number] = bead_results
+                    anomaly_scores_isoforest[bead_number] = bead_scores
 
-if st.button("Run Isolation Forest") and "chosen_bead_data" in st.session_state:
-    with st.spinner("Running Isolation Forest..."):
-        features_list = [extract_time_freq_features(bead_data["data"].iloc[:, 0].values) for bead_data in st.session_state["chosen_bead_data"]]
-        
-        iso_forest = IsolationForest(contamination=0.2, random_state=42)
-        predictions = iso_forest.fit_predict(features_list)
-        
-        for bead_data, prediction in zip(st.session_state["chosen_bead_data"], predictions):
-            bead_data["status"] = "anomalous" if prediction == -1 else "normal"
-        
-        st.session_state["show_scatter"] = False
-        st.success("Anomaly detection complete!")
-
-if st.button("Show 3D Scatter Plot") and "chosen_bead_data" in st.session_state:
-    st.session_state["show_scatter"] = True
-    features_matrix = np.array([bead_data["features"] for bead_data in st.session_state["chosen_bead_data"]])
-    pca = PCA(n_components=3)
-    transformed = pca.fit_transform(features_matrix)
-    
-    df_scatter = pd.DataFrame(transformed, columns=["PC1", "PC2", "PC3"])
-    df_scatter["status"] = [bead_data["status"] for bead_data in st.session_state["chosen_bead_data"]]
-    df_scatter["color"] = df_scatter["status"].map({"anomalous": "red", "normal": "black"})
-    
-    fig = px.scatter_3d(df_scatter, x="PC1", y="PC2", z="PC3", color="color", hover_data=[df_scatter.index])
-    st.plotly_chart(fig)
+st.success("Anomaly detection complete!")
