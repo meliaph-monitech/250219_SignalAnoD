@@ -20,7 +20,6 @@ def extract_zip(zip_path, extract_dir="extracted_csvs"):
     csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
     return [os.path.join(extract_dir, f) for f in csv_files], extract_dir
 
-
 def segment_beads(df, column, threshold):
     start_indices = []
     end_indices = []
@@ -37,7 +36,6 @@ def segment_beads(df, column, threshold):
         else:
             i += 1
     return list(zip(start_indices, end_indices))
-
 
 def extract_time_freq_features(signal):
     if len(signal) == 0:
@@ -116,9 +114,9 @@ with st.sidebar:
                     file_names = [seg["file"] for seg in bead_data]
                     
                     feature_matrix = [extract_time_freq_features(signal) for signal in signals]
-                    feature_matrix = [features for features in feature_matrix if features is not None]  # Remove None values
+                    feature_matrix = [features for features in feature_matrix if features is not None]
                     
-                    if not feature_matrix:  # Check if empty
+                    if not feature_matrix:
                         st.error("No valid data for anomaly detection.")
                         continue
                     
@@ -137,8 +135,7 @@ with st.sidebar:
                     anomaly_results_isoforest[bead_number] = bead_results
                     anomaly_scores_isoforest[bead_number] = bead_scores
 
-st.write("## Visualization")
-if "chosen_bead_data" in st.session_state and anomaly_results_isoforest:
+if "chosen_bead_data" in st.session_state and "anomaly_results_isoforest" in locals():
     for bead_number, results in anomaly_results_isoforest.items():
         bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
         fig = go.Figure()
