@@ -138,7 +138,14 @@ with st.sidebar:
                     anomaly_scores_isoforest[bead_number] = bead_scores
 
 st.write("## Visualization")
-if "chosen_bead_data" in st.session_state and "anomaly_results_isoforest" in locals():
+if "chosen_bead_data" in st.session_state and anomaly_results_isoforest:
     for bead_number, results in anomaly_results_isoforest.items():
-        st.write(f"### Bead {bead_number} Anomaly Results")
-    st.success("Anomaly detection complete!")
+        bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
+        fig = go.Figure()
+        for seg in bead_data:
+            signal = seg["data"].iloc[:, 0].values
+            color = 'red' if results[seg["file"]] == 'anomalous' else 'black'
+            fig.add_trace(go.Scatter(y=signal, mode='lines', line=dict(color=color), name=f"Bead {seg['bead_number']}", hovertext=f"File: {seg['file']}", hoverinfo='text'))
+        fig.update_layout(title=f"Bead {bead_number} Anomaly Detection", xaxis_title="Time Index", yaxis_title="Signal Value")
+        st.plotly_chart(fig)
+st.success("Anomaly detection complete!")
