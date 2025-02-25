@@ -126,50 +126,6 @@ with st.sidebar:
                     anomaly_results_isoforest[bead_number] = bead_results
                     anomaly_scores_isoforest[bead_number] = bead_scores
 
-# st.write("## Visualization")
-# if "chosen_bead_data" in st.session_state and "anomaly_results_isoforest" in locals():
-#     for bead_number, results in anomaly_results_isoforest.items():
-#         bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
-#         file_names = [seg["file"] for seg in bead_data]
-#         signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
-#         fig = go.Figure()
-#         for idx, signal in enumerate(signals):
-#             file_name = file_names[idx]
-#             status = results[file_name]
-#             color = 'red' if status == 'anomalous' else 'black'
-#             fig.add_trace(go.Scatter(y=signal, mode='lines', line=dict(color=color, width=1), name=file_name))
-#         st.plotly_chart(fig)
-
-# st.write("## Visualization")
-# if "chosen_bead_data" in st.session_state and "anomaly_results_isoforest" in locals():
-#     for bead_number, results in anomaly_results_isoforest.items():
-#         bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
-#         file_names = [seg["file"] for seg in bead_data]
-#         signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
-#         fig = go.Figure()
-#         for idx, signal in enumerate(signals):
-#             file_name = file_names[idx]
-#             status = results[file_name]
-#             # Add the anomaly score to the hover text
-#             anomaly_score = anomaly_scores_isoforest[bead_number][file_name]
-#             color = 'red' if status == 'anomalous' else 'black'
-#             fig.add_trace(go.Scatter(
-#                 y=signal,
-#                 mode='lines',
-#                 line=dict(color=color, width=1),
-#                 name=f"{file_name}",
-#                 hoverinfo='text',
-#                 text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
-#             ))
-#         fig.update_layout(
-#             title=f"Bead Number {bead_number}: Anomaly Detection Results",
-#             xaxis_title="Time Index",
-#             yaxis_title="Signal Value",
-#             showlegend=False
-#         )
-#         st.plotly_chart(fig)
-#     st.success("Anomaly detection complete!")
-
 st.write("## Visualization")
 if "chosen_bead_data" in st.session_state and "anomaly_results_isoforest" in locals():
     for bead_number, results in anomaly_results_isoforest.items():
