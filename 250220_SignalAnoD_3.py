@@ -21,7 +21,6 @@ def extract_zip(zip_path, extract_dir="extracted_csvs"):
     csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
     return [os.path.join(extract_dir, f) for f in csv_files], extract_dir
 
-
 def segment_beads(df, column, threshold):
     start_indices = []
     end_indices = []
@@ -61,7 +60,6 @@ def extract_time_freq_features(signal):
     return [mean_val, std_val, min_val, max_val, energy, skewness, kurt, spectral_energy, dominant_freq]
 
 st.set_page_config(layout="wide")
-
 st.title("Laser Welding Anomaly Detection")
 
 with st.sidebar:
@@ -107,23 +105,31 @@ with st.sidebar:
             with st.spinner("Running Isolation Forest..."):
                 anomaly_results_isoforest = {}
                 anomaly_scores_isoforest = {}
+                scaler = RobustScaler()
+                
                 for bead_number in sorted(set(seg["bead_number"] for seg in st.session_state["chosen_bead_data"])):
                     bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
                     signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
                     file_names = [seg["file"] for seg in bead_data]
                     feature_matrix = np.array([extract_time_freq_features(signal) for signal in signals])
                     
-                    scaler = RobustScaler()
-                    feature_matrix_scaled = scaler.fit_transform(feature_matrix)
+                    if feature_matrix.shape[0] > 1:  # Apply scaling only if there's more than one sample
+                        feature_matrix = scaler.fit_transform(feature_matrix)
                     
                     iso_forest = IsolationForest(random_state=42)
-                    predictions = iso_forest.fit_predict(feature_matrix_scaled)
-                    anomaly_scores = -iso_forest.decision_function(feature_matrix_scaled)
+                    predictions = iso_forest.fit_predict(feature_matrix)
+                    anomaly_scores = -iso_forest.decision_function(feature_matrix)
+                    
                     bead_results = {}
                     bead_scores = {}
                     for idx, prediction in enumerate(predictions):
                         status = 'anomalous' if prediction == -1 else 'normal'
                         bead_results[file_names[idx]] = status
                         bead_scores[file_names[idx]] = anomaly_scores[idx]
+                    
                     anomaly_results_isoforest[bead_number] = bead_results
                     anomaly_scores_isoforest[bead_number] = bead_scores
+                
+                st.session_state["anomaly_results_isoforest"] = anomaly_results_isoforest
+                st.session_state["anomaly_scores_isoforest"] = anomaly_scores_isoforest
+                st.success("Anomaly detection complete!")
