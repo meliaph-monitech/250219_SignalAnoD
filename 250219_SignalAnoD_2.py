@@ -40,6 +40,9 @@ def segment_beads(df, column, threshold):
 
 def extract_time_freq_features(signal):
     n = len(signal)
+    if n == 0 or np.all(signal == 0):  # Handle empty or all-zero signals
+        return [0] * 9  # Return a default feature set with zeros
+
     mean_val = np.mean(signal)
     std_val = np.std(signal)
     min_val = np.min(signal)
@@ -47,11 +50,15 @@ def extract_time_freq_features(signal):
     energy = np.sum(np.square(signal)) / n
     skewness = skew(signal)
     kurt = kurtosis(signal)
+    
     fft_values = fft(signal)
     fft_magnitude = np.abs(fft_values)[:n // 2]
-    spectral_energy = np.sum(fft_magnitude ** 2) / len(fft_magnitude)
-    dominant_freq = np.argmax(fft_magnitude)
+
+    spectral_energy = np.sum(fft_magnitude ** 2) / len(fft_magnitude) if len(fft_magnitude) > 0 else 0
+    dominant_freq = np.argmax(fft_magnitude) if len(fft_magnitude) > 0 else 0  # Safe argmax
+
     return [mean_val, std_val, min_val, max_val, energy, skewness, kurt, spectral_energy, dominant_freq]
+
 
 st.set_page_config(layout="wide")
 
