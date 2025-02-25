@@ -4,6 +4,7 @@ import os
 import pandas as pd
 import plotly.graph_objects as go
 from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import RobustScaler
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft
 import numpy as np
@@ -111,6 +112,8 @@ with st.sidebar:
                     signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
                     file_names = [seg["file"] for seg in bead_data]
                     feature_matrix = np.array([extract_time_freq_features(signal) for signal in signals])
+                    scaler = RobustScaler()
+                    feature_matrix = scaler.fit_transform(feature_matrix)
                     iso_forest = IsolationForest(contamination=contamination_rate, random_state=42)
                     predictions = iso_forest.fit_predict(feature_matrix)
                     anomaly_scores = -iso_forest.decision_function(feature_matrix)
