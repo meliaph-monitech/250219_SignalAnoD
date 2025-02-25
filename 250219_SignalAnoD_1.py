@@ -101,8 +101,6 @@ with st.sidebar:
             st.session_state["chosen_bead_data"] = chosen_bead_data
             st.success("Beads selected successfully!")
         
-        contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
-        
         # Contamination rate logic in the sidebar section
         contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
         use_contamination_rate = st.checkbox("Use Contamination Rate", value=True)
