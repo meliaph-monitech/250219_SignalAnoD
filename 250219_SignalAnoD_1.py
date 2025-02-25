@@ -105,7 +105,7 @@ with st.sidebar:
         contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
         use_contamination_rate = st.checkbox("Use Contamination Rate", value=True)
         
-        # Modify the IsolationForest call to use contamination rate conditionally
+        # Modify the IsolationForest call to either include or omit contamination based on user choice
         if st.button("Run Isolation Forest") and "chosen_bead_data" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
                 anomaly_results_isoforest = {}
@@ -117,12 +117,13 @@ with st.sidebar:
                     feature_matrix = np.array([extract_time_freq_features(signal) for signal in signals])
                     scaler = RobustScaler()
                     feature_matrix = scaler.fit_transform(feature_matrix)
-                    
-                    # If the user wants to use contamination rate, pass it to IsolationForest, else omit it
-                    iso_forest = IsolationForest(
-                        contamination=contamination_rate if use_contamination_rate else 0.1,  # Default to 0.1 if unchecked
-                        random_state=42
-                    )
+        
+                    # Conditional logic to initialize IsolationForest
+                    if use_contamination_rate:
+                        iso_forest = IsolationForest(contamination=contamination_rate, random_state=42)
+                    else:
+                        iso_forest = IsolationForest(random_state=42)  # No contamination parameter
+        
                     predictions = iso_forest.fit_predict(feature_matrix)
                     anomaly_scores = -iso_forest.decision_function(feature_matrix)
                     bead_results = {}
@@ -133,6 +134,7 @@ with st.sidebar:
                         bead_scores[file_names[idx]] = anomaly_scores[idx]
                     anomaly_results_isoforest[bead_number] = bead_results
                     anomaly_scores_isoforest[bead_number] = bead_scores
+
 
 
 st.write("## Visualization")
