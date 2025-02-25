@@ -40,8 +40,8 @@ def segment_beads(df, column, threshold):
 
 def extract_time_freq_features(signal):
     n = len(signal)
-    if n == 0 or np.all(signal == 0):  # Handle empty or all-zero signals
-        return [0] * 9  # Return a default feature set with zeros
+    if n == 0 or np.all(signal == 0):
+        return [0] * 9
 
     mean_val = np.mean(signal)
     std_val = np.std(signal)
@@ -55,7 +55,7 @@ def extract_time_freq_features(signal):
     fft_magnitude = np.abs(fft_values)[:n // 2]
 
     spectral_energy = np.sum(fft_magnitude ** 2) / len(fft_magnitude) if len(fft_magnitude) > 0 else 0
-    dominant_freq = np.argmax(fft_magnitude) if len(fft_magnitude) > 0 else 0  # Safe argmax
+    dominant_freq = np.argmax(fft_magnitude) if len(fft_magnitude) > 0 else 0
 
     return [mean_val, std_val, min_val, max_val, energy, skewness, kurt, spectral_energy, dominant_freq]
 
@@ -113,7 +113,7 @@ with st.sidebar:
                     file_names = [seg["file"] for seg in bead_data]
                     feature_matrix = np.array([extract_time_freq_features(signal) for signal in signals])
                     
-                    if feature_matrix.shape[0] > 1:  # Apply scaling only if there's more than one sample
+                    if feature_matrix.shape[0] > 1:
                         feature_matrix = scaler.fit_transform(feature_matrix)
                     
                     iso_forest = IsolationForest(random_state=42)
@@ -129,17 +129,20 @@ with st.sidebar:
                     
                     anomaly_results_isoforest[bead_number] = bead_results
                     anomaly_scores_isoforest[bead_number] = bead_scores
-                
-                st.session_state["anomaly_results_isoforest"] = anomaly_results_isoforest
-                st.session_state["anomaly_scores_isoforest"] = anomaly_scores_isoforest
-                st.success("Anomaly detection complete!")
 
-if "anomaly_results_isoforest" in st.session_state:
-    st.write("## Visualization")
-    for bead_number, results in st.session_state["anomaly_results_isoforest"].items():
-        st.write(f"### Bead {bead_number}")
+st.write("## Visualization")
+if "chosen_bead_data" in st.session_state and "anomaly_results_isoforest" in locals():
+    for bead_number, results in anomaly_results_isoforest.items():
+        bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
+        file_names = [seg["file"] for seg in bead_data]
+        signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
         fig = go.Figure()
-        for file_name, status in results.items():
+        for idx, signal in enumerate(signals):
+            file_name = file_names[idx]
+            status = results[file_name]
+            anomaly_score = anomaly_scores_isoforest[bead_number][file_name]
             color = 'red' if status == 'anomalous' else 'black'
-            st.write(f"{file_name}: {status}")
+            fig.add_trace(go.Scatter(y=signal, mode='lines', line=dict(color=color, width=1), name=f"{file_name}", hoverinfo='text', text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"))
+        fig.update_layout(title=f"Bead Number {bead_number}: Anomaly Detection Results", xaxis_title="Time Index", yaxis_title="Signal Value", showlegend=False)
         st.plotly_chart(fig)
+st.success("Anomaly detection complete!")
