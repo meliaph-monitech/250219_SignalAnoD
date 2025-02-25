@@ -4,6 +4,7 @@ import os
 import pandas as pd
 import plotly.graph_objects as go
 from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import RobustScaler
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft
 import numpy as np
@@ -59,7 +60,6 @@ def extract_time_freq_features(signal):
 
     return [mean_val, std_val, min_val, max_val, energy, skewness, kurt, spectral_energy, dominant_freq]
 
-
 st.set_page_config(layout="wide")
 
 st.title("Laser Welding Anomaly Detection")
@@ -112,9 +112,13 @@ with st.sidebar:
                     signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
                     file_names = [seg["file"] for seg in bead_data]
                     feature_matrix = np.array([extract_time_freq_features(signal) for signal in signals])
+                    
+                    scaler = RobustScaler()
+                    feature_matrix_scaled = scaler.fit_transform(feature_matrix)
+                    
                     iso_forest = IsolationForest(random_state=42)
-                    predictions = iso_forest.fit_predict(feature_matrix)
-                    anomaly_scores = -iso_forest.decision_function(feature_matrix)
+                    predictions = iso_forest.fit_predict(feature_matrix_scaled)
+                    anomaly_scores = -iso_forest.decision_function(feature_matrix_scaled)
                     bead_results = {}
                     bead_scores = {}
                     for idx, prediction in enumerate(predictions):
@@ -123,32 +127,3 @@ with st.sidebar:
                         bead_scores[file_names[idx]] = anomaly_scores[idx]
                     anomaly_results_isoforest[bead_number] = bead_results
                     anomaly_scores_isoforest[bead_number] = bead_scores
-
-st.write("## Visualization")
-if "chosen_bead_data" in st.session_state and "anomaly_results_isoforest" in locals():
-    for bead_number, results in anomaly_results_isoforest.items():
-        bead_data = [seg for seg in st.session_state["chosen_bead_data"] if seg["bead_number"] == bead_number]
-        file_names = [seg["file"] for seg in bead_data]
-        signals = [seg["data"].iloc[:, 0].values for seg in bead_data]
-        fig = go.Figure()
-        for idx, signal in enumerate(signals):
-            file_name = file_names[idx]
-            status = anomaly_results_isoforest[bead_number][file_name]
-            anomaly_score = anomaly_scores_isoforest[bead_number][file_name]
-            color = 'red' if status == 'anomalous' else 'black'
-            fig.add_trace(go.Scatter(
-                y=signal,
-                mode='lines',
-                line=dict(color=color, width=1),
-                name=f"{file_name}",
-                hoverinfo='text',
-                text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
-            ))
-        fig.update_layout(
-            title=f"Bead Number {bead_number}: Anomaly Detection Results",
-            xaxis_title="Time Index",
-            yaxis_title="Signal Value",
-            showlegend=False
-        )
-        st.plotly_chart(fig)
-    st.success("Anomaly detection complete!")
