@@ -133,3 +133,13 @@ with st.sidebar:
                 st.session_state["anomaly_results_isoforest"] = anomaly_results_isoforest
                 st.session_state["anomaly_scores_isoforest"] = anomaly_scores_isoforest
                 st.success("Anomaly detection complete!")
+
+if "anomaly_results_isoforest" in st.session_state:
+    st.write("## Visualization")
+    for bead_number, results in st.session_state["anomaly_results_isoforest"].items():
+        st.write(f"### Bead {bead_number}")
+        fig = go.Figure()
+        for file_name, status in results.items():
+            color = 'red' if status == 'anomalous' else 'black'
+            st.write(f"{file_name}: {status}")
+        st.plotly_chart(fig)
