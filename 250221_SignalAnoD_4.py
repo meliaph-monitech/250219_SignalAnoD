@@ -6,7 +6,8 @@ import plotly.graph_objects as go
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import RobustScaler
 from scipy.stats import skew, kurtosis
-from scipy.fft import fft
+from scipy.fft import fft, fftfreq
+from scipy.signal import find_peaks
 import numpy as np
 
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
