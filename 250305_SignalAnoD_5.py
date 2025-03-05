@@ -139,7 +139,7 @@ if "model_trained" in st.session_state:
 
         fig = go.Figure()
         for bead_num in st.session_state["selected_beads"]:
-            if bead_num in new_df['bead_number'].values:
+            if 'bead_number' in new_df.columns and bead_num in new_df['bead_number'].values:
                 bead_data = new_df[new_df['bead_number'] == bead_num][filter_column]
                 color = 'blue' if st.session_state["model"].predict([bead_data.mean()]) == 1 else 'red'
                 fig.add_trace(go.Scatter(y=bead_data, mode='lines', name=f'Bead {bead_num} (New)', line=dict(color=color)))
