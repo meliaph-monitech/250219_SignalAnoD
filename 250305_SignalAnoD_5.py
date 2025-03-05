@@ -39,58 +39,6 @@ def segment_beads(df, column, threshold):
             i += 1
     return list(zip(start_indices, end_indices))
 
-def extract_advanced_features(signal):
-    n = len(signal)
-    if n == 0:
-        return [0] * 20
-
-    mean_val = np.mean(signal)
-    std_val = np.std(signal)
-    min_val = np.min(signal)
-    max_val = np.max(signal)
-    median_val = np.median(signal)
-    skewness = skew(signal)
-    kurt = kurtosis(signal)
-    peak_to_peak = max_val - min_val
-    energy = np.sum(signal**2)
-    cv = std_val / mean_val if mean_val != 0 else 0
-
-    signal_fft = fft(signal)
-    psd = np.abs(signal_fft)**2
-    freqs = fftfreq(n, 1)
-    positive_freqs = freqs[:n // 2]
-    positive_psd = psd[:n // 2]
-    dominant_freq = positive_freqs[np.argmax(positive_psd)] if len(positive_psd) > 0 else 0
-    psd_normalized = positive_psd / np.sum(positive_psd) if np.sum(positive_psd) > 0 else np.zeros_like(positive_psd)
-    spectral_entropy = -np.sum(psd_normalized * np.log2(psd_normalized + 1e-12))
-
-    autocorrelation = np.corrcoef(signal[:-1], signal[1:])[0, 1] if n > 1 else 0
-    peaks, _ = find_peaks(signal)
-    peak_count = len(peaks)
-    zero_crossing_rate = np.sum(np.diff(np.sign(signal)) != 0) / n
-    rms = np.sqrt(np.mean(signal**2))
-
-    x = np.arange(n)
-    slope, _ = np.polyfit(x, signal, 1)
-    rolling_window = max(10, n // 10)
-    rolling_mean = np.convolve(signal, np.ones(rolling_window) / rolling_window, mode='valid')
-    moving_average = np.mean(rolling_mean)
-
-    threshold = 3 * std_val
-    outlier_count = np.sum(np.abs(signal - mean_val) > threshold)
-    extreme_event_duration = 0
-    current_duration = 0
-    for value in signal:
-        if np.abs(value - mean_val) > threshold:
-            current_duration += 1
-        else:
-            extreme_event_duration = max(extreme_event_duration, current_duration)
-            current_duration = 0
-
-    return [mean_val, std_val, min_val, max_val, median_val, skewness, kurt, peak_to_peak, energy, cv, 
-            dominant_freq, spectral_entropy, autocorrelation, peak_count, zero_crossing_rate, rms, 
-            slope, moving_average, outlier_count, extreme_event_duration]
-
 st.set_page_config(layout="wide")
 st.title("Laser Welding Anomaly Detection")
 
@@ -137,11 +85,48 @@ if "model_trained" in st.session_state:
         new_df = pd.read_csv(new_file)
         st.success("New data processed and analyzed!")
 
+st.write("## Visualization")
+
+if "selected_beads" in st.session_state and "model_trained" in st.session_state:
+    for bead_number in st.session_state["selected_beads"]:
         fig = go.Figure()
-        for bead_num in st.session_state["selected_beads"]:
-            if 'bead_number' in new_df.columns and bead_num in new_df['bead_number'].values:
-                bead_data = new_df[new_df['bead_number'] == bead_num][filter_column]
-                color = 'blue' if st.session_state["model"].predict([bead_data.mean()]) == 1 else 'red'
-                fig.add_trace(go.Scatter(y=bead_data, mode='lines', name=f'Bead {bead_num} (New)', line=dict(color=color)))
-        
+
+        # Plot training data (black lines)
+        if "training_data" in st.session_state:
+            for train_file, train_signal in st.session_state["training_data"].items():
+                fig.add_trace(go.Scatter(
+                    y=train_signal,
+                    mode='lines',
+                    line=dict(color='black', width=1),
+                    name=f"Training: {train_file}",
+                    hoverinfo='text',
+                    text=f"Training File: {train_file}"
+                ))
+
+        # Plot new data (color-coded by anomaly detection)
+        if "new_data" in st.session_state:
+            new_signal = st.session_state["new_data"][bead_number]
+            prediction = st.session_state["model"].predict([new_signal.mean()])  # Predict anomaly
+            anomaly_score = st.session_state["model"].decision_function([new_signal.mean()])[0]  # Get anomaly score
+            color = 'blue' if prediction == 1 else 'red'
+            
+            fig.add_trace(go.Scatter(
+                y=new_signal,
+                mode='lines',
+                line=dict(color=color, width=2),
+                name=f"New Data (Bead {bead_number})",
+                hoverinfo='text',
+                text=f"Bead: {bead_number}<br>Prediction: {'Normal' if prediction == 1 else 'Anomalous'}<br>Anomaly Score: {anomaly_score:.4f}"
+            ))
+
+        # Update layout
+        fig.update_layout(
+            title=f"Bead Number {bead_number}: Anomaly Detection",
+            xaxis_title="Time Index",
+            yaxis_title="Signal Value",
+            showlegend=True
+        )
+
         st.plotly_chart(fig)
+
+st.success("Analysis complete!")
