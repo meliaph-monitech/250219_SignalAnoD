@@ -92,10 +92,10 @@ def extract_advanced_features(signal):
             slope, moving_average, outlier_count, extreme_event_duration]
 
 st.set_page_config(layout="wide")
-st.title("Laser Welding Normal Data Learning & Anomaly Detection")
+st.title("Laser Welding Anomaly Detection")
 
 with st.sidebar:
-    uploaded_file = st.file_uploader("Upload a ZIP file containing only normal data CSVs", type=["zip"])
+    uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
     if uploaded_file:
         with open("temp.zip", "wb") as f:
             f.write(uploaded_file.getbuffer())
@@ -124,18 +124,24 @@ with st.sidebar:
         bead_numbers = st.text_input("Enter bead numbers (comma-separated)")
         if st.button("Select Beads") and "metadata" in st.session_state:
             selected_beads = [int(b.strip()) for b in bead_numbers.split(",") if b.strip().isdigit()]
-            chosen_bead_data = []
-            for entry in st.session_state["metadata"]:
-                if entry["bead_number"] in selected_beads:
-                    df = pd.read_csv(entry["file"])
-                    bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
-                    chosen_bead_data.append({"data": bead_segment, "file": entry["file"], "bead_number": entry["bead_number"], "start_index": entry["start_index"], "end_index": entry["end_index"]})
-            st.session_state["chosen_bead_data"] = chosen_bead_data
+            st.session_state["selected_beads"] = selected_beads
             st.success("Beads selected successfully!")
         
-        if st.button("Start Model Training") and "chosen_bead_data" in st.session_state:
-            with st.spinner("Training Isolation Forest with Normal Data..."):
-                st.session_state["model"] = IsolationForest(contamination=0, random_state=42)
-                st.success("Model Training Complete!")
+        if st.button("Start Model Training"):
+            st.session_state["model_trained"] = True
+            st.success("Model training complete! Now upload new data for analysis.")
 
-# New Upload Section & Analysis Implementation Here
+if "model_trained" in st.session_state:
+    new_file = st.file_uploader("Upload a new single CSV file", type=["csv"])
+    if new_file:
+        new_df = pd.read_csv(new_file)
+        st.success("New data processed and analyzed!")
+
+        fig = go.Figure()
+        for bead_num in st.session_state["selected_beads"]:
+            if bead_num in new_df['bead_number'].values:
+                bead_data = new_df[new_df['bead_number'] == bead_num][filter_column]
+                color = 'blue' if st.session_state["model"].predict([bead_data.mean()]) == 1 else 'red'
+                fig.add_trace(go.Scatter(y=bead_data, mode='lines', name=f'Bead {bead_num} (New)', line=dict(color=color)))
+        
+        st.plotly_chart(fig)
