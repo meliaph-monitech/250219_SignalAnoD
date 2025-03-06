@@ -9,7 +9,6 @@ from scipy.stats import skew, kurtosis
 from scipy.fft import fft, fftfreq
 from scipy.signal import find_peaks
 import numpy as np
-from collections import defaultdict
 
 
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
@@ -109,7 +108,7 @@ def extract_advanced_features(signal):
 
 
 st.set_page_config(layout="wide")
-st.title("Laser Welding Anomaly Detection V6 - Global Analysis")
+st.title("Laser Welding Anomaly Detection V5 - Global Analysis")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -128,6 +127,7 @@ with st.sidebar:
             with st.spinner("Segmenting beads..."):
                 bead_segments = {}
                 metadata = []
+                raw_signals_by_bead = {}
                 for file in csv_files:
                     df = pd.read_csv(file)
                     segments = segment_beads(df, filter_column, threshold)
@@ -135,48 +135,41 @@ with st.sidebar:
                         bead_segments[file] = segments
                         for bead_num, (start, end) in enumerate(segments, start=1):
                             metadata.append({"file": file, "bead_number": bead_num, "start_index": start, "end_index": end})
+                            # Collect raw signal for each bead
+                            raw_signals_by_bead.setdefault(bead_num, []).append(df.iloc[start:end + 1, df.columns.get_loc(filter_column)].values)
                 st.success("Bead segmentation complete")
                 st.session_state["metadata"] = metadata
+                st.session_state["raw_signals_by_bead"] = raw_signals_by_bead
         
         contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
         use_contamination_rate = st.checkbox("Use Contamination Rate", value=True)
         
         if st.button("Run Isolation Forest") and "metadata" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
-                features_by_bead = defaultdict(list)
-                files_by_bead = defaultdict(list)
-
-                # Group features by bead number
-                for entry in st.session_state["metadata"]:
-                    df = pd.read_csv(entry["file"])
-                    bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
-                    features = extract_advanced_features(bead_segment.iloc[:, 0].values)
-                    bead_number = entry["bead_number"]
-                    features_by_bead[bead_number].append(features)
-                    files_by_bead[bead_number].append((entry["file"], bead_number))
-
-                # Normalize features per bead number
-                scaled_features_by_bead = {}
-                for bead_number, feature_matrix in features_by_bead.items():
-                    scaler = RobustScaler()
-                    scaled_features_by_bead[bead_number] = scaler.fit_transform(feature_matrix)
-
-                # Combine all scaled features into a single matrix
-                all_scaled_features = []
+                # Scale raw signals by bead
+                scaled_signals_by_bead = {}
+                scaler = RobustScaler()
+                for bead_number, signals in st.session_state["raw_signals_by_bead"].items():
+                    flattened_signals = np.concatenate(signals).reshape(-1, 1)
+                    scaled_flattened = scaler.fit_transform(flattened_signals).flatten()
+                    scaled_signals_by_bead[bead_number] = np.split(scaled_flattened, np.cumsum([len(sig) for sig in signals[:-1]]))
+                
+                # Replace raw signals with scaled signals in metadata
+                all_feature_matrix = []
                 all_file_names = []
-                for bead_number, scaled_features in scaled_features_by_bead.items():
-                    all_scaled_features.extend(scaled_features)
-                    all_file_names.extend(files_by_bead[bead_number])
-
-                # Convert the list to a NumPy array for Isolation Forest
-                all_scaled_features = np.array(all_scaled_features)
-
-                # Train Isolation Forest
+                for entry in st.session_state["metadata"]:
+                    bead_number = entry["bead_number"]
+                    scaled_signal = scaled_signals_by_bead[bead_number].pop(0)  # Get the scaled signal
+                    features = extract_advanced_features(scaled_signal)
+                    all_feature_matrix.append(features)
+                    all_file_names.append((entry["file"], bead_number))
+                
+                # Run Isolation Forest
+                all_feature_matrix = np.array(all_feature_matrix)
                 iso_forest = IsolationForest(contamination=contamination_rate if use_contamination_rate else 'auto', random_state=42)
-                predictions = iso_forest.fit_predict(all_scaled_features)
-                anomaly_scores = -iso_forest.decision_function(all_scaled_features)
-
-                # Save results
+                predictions = iso_forest.fit_predict(all_feature_matrix)
+                anomaly_scores = -iso_forest.decision_function(all_feature_matrix)
+                
                 st.session_state["anomaly_results_isoforest"] = {fn: ('anomalous' if p == -1 else 'normal') for fn, p in zip(all_file_names, predictions)}
                 st.session_state["anomaly_scores_isoforest"] = {fn: s for fn, s in zip(all_file_names, anomaly_scores)}
 
@@ -198,7 +191,7 @@ if "anomaly_results_isoforest" in st.session_state:
 
             # Load data and extract the signal for the specific bead
             df = pd.read_csv(file_name)
-            signal = df.iloc[start_idx:end_idx + 1, 0].values  # Extract only the bead's signal
+            signal = df.iloc[start_idx:end_idx + 1, df.columns.get_loc(filter_column)].values  # Extract only the bead's signal
 
             # Get anomaly status and score
             status = st.session_state["anomaly_results_isoforest"].get((file_name, selected_bead), "normal")
