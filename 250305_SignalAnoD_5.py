@@ -1,5 +1,3 @@
-## ADVANCED FEATURE EXTRACTION
-
 import streamlit as st
 import zipfile
 import os
@@ -149,40 +147,34 @@ with st.sidebar:
                 st.session_state["anomaly_scores_isoforest"] = {fn: s for (fn, _), s in zip(all_file_names, anomaly_scores)}
 
 st.write("## Visualization")
-if "anomaly_results_isoforest" in st.session_state and st.session_state["anomaly_results_isoforest"]:
-    try:
-        bead_numbers = sorted(set(num for _, num in st.session_state["anomaly_results_isoforest"].keys()))
-        if bead_numbers:
-            selected_bead = st.selectbox("Select Bead Number to Display", bead_numbers)
-            
-            if selected_bead:
-                fig = go.Figure()
-                for (file_name, bead_num), status in st.session_state["anomaly_results_isoforest"].items():
-                    if bead_num == selected_bead:
-                        df = pd.read_csv(file_name)
-                        signal = df.iloc[:, 0].values if not df.empty else []
-                        anomaly_score = st.session_state["anomaly_scores_isoforest"].get((file_name, bead_num), 0)
-                        color = 'red' if status == 'anomalous' else 'black'
-                        
-                        fig.add_trace(go.Scatter(
-                            y=signal,
-                            mode='lines',
-                            line=dict(color=color, width=1),
-                            name=f"{file_name}",
-                            hoverinfo='text',
-                            text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
-                        ))
+if "anomaly_results_isoforest" in st.session_state:
+    bead_numbers = sorted(set(num for _, num in st.session_state["anomaly_results_isoforest"].keys()))
+    selected_bead = st.selectbox("Select Bead Number to Display", bead_numbers)
+    
+    if selected_bead:
+        fig = go.Figure()
+        for (file_name, bead_num), status in st.session_state["anomaly_results_isoforest"].items():
+            if bead_num == selected_bead:
+                df = pd.read_csv(file_name)
+                signal = df.iloc[:, 0].values
+                anomaly_score = st.session_state["anomaly_scores_isoforest"].get((file_name, bead_num), 0)
+                color = 'red' if status == 'anomalous' else 'black'
                 
-                fig.update_layout(
-                    title=f"Bead Number {selected_bead}: Anomaly Detection Results",
-                    xaxis_title="Time Index",
-                    yaxis_title="Signal Value",
-                    showlegend=True
-                )
-                
-                st.plotly_chart(fig)
-                st.success("Anomaly detection complete!")
-    except Exception as e:
-        st.error(f"An error occurred while processing the visualization: {e}")
-else:
-    st.warning("No anomaly detection results available. Please run the analysis first.")
+                fig.add_trace(go.Scatter(
+                    y=signal,
+                    mode='lines',
+                    line=dict(color=color, width=1),
+                    name=f"{file_name}",
+                    hoverinfo='text',
+                    text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
+                ))
+        
+        fig.update_layout(
+            title=f"Bead Number {selected_bead}: Anomaly Detection Results",
+            xaxis_title="Time Index",
+            yaxis_title="Signal Value",
+            showlegend=True
+        )
+        
+        st.plotly_chart(fig)
+        st.success("Anomaly detection complete!")
