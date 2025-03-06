@@ -185,6 +185,11 @@ with st.sidebar:
                     anomaly_results_isoforest[bead_number] = bead_results
                     anomaly_scores_isoforest[bead_number] = bead_scores
 
+                st.session_state["anomaly_results_isoforest"] = anomaly_results_isoforest
+                st.session_state["anomaly_scores_isoforest"] = anomaly_scores_isoforest
+        
+                st.success("Isolation Forest analysis complete!")
+
 if "anomaly_results_isoforest" in st.session_state:
     if st.button("Generate Result"):
         # Prepare data for export
