@@ -96,56 +96,36 @@ def extract_advanced_features(signal):
 st.set_page_config(layout="wide")
 st.title("Laser Welding Anomaly Detection")
 
-with st.sidebar:
-    uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
-    if uploaded_file:
-        with open("temp.zip", "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        csv_files, extract_dir = extract_zip("temp.zip")
-        st.success(f"Extracted {len(csv_files)} CSV files")
-        
-        df_sample = pd.read_csv(csv_files[0])
-        columns = df_sample.columns.tolist()
-        filter_column = st.selectbox("Select column for filtering", columns)
-        threshold = st.number_input("Enter filtering threshold", value=0.0)
-        
-        if st.button("Segment Beads"):
-            with st.spinner("Segmenting beads..."):
-                bead_segments = {}
-                metadata = []
-                for file in csv_files:
-                    df = pd.read_csv(file)
-                    segments = segment_beads(df, filter_column, threshold)
-                    if segments:
-                        bead_segments[file] = segments
-                        for bead_num, (start, end) in enumerate(segments, start=1):
-                            metadata.append({"file": file, "bead_number": bead_num, "start_index": start, "end_index": end})
-                st.success("Bead segmentation complete")
-                st.session_state["metadata"] = metadata
-        
-        # Contamination rate logic
-        contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
-        use_contamination_rate = st.checkbox("Use Contamination Rate", value=True)
-        
-        # Running Isolation Forest globally
-        if st.button("Run Isolation Forest") and "metadata" in st.session_state:
-            with st.spinner("Running Isolation Forest..."):
-                all_feature_matrix = []
-                all_file_names = []
-                for entry in st.session_state["metadata"]:
-                    df = pd.read_csv(entry["file"])
-                    bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
-                    features = extract_advanced_features(bead_segment.iloc[:, 0].values)
-                    all_feature_matrix.append(features)
-                    all_file_names.append((entry["file"], entry["bead_number"]))
-                
-                scaler = RobustScaler()
-                all_feature_matrix = scaler.fit_transform(all_feature_matrix)
-                iso_forest = IsolationForest(contamination=contamination_rate if use_contamination_rate else 'auto', random_state=42)
-                predictions = iso_forest.fit_predict(all_feature_matrix)
-                anomaly_scores = -iso_forest.decision_function(all_feature_matrix)
-                
-                st.session_state["anomaly_results_isoforest"] = {fn: ('anomalous' if p == -1 else 'normal') for (fn, _), p in zip(all_file_names, predictions)}
-                st.session_state["anomaly_scores_isoforest"] = {fn: s for (fn, _), s in zip(all_file_names, anomaly_scores)}
-
+# Visualization
 st.write("## Visualization")
+if "anomaly_results_isoforest" in st.session_state:
+    bead_numbers = sorted(set(num for _, num in st.session_state["anomaly_results_isoforest"].keys()))
+    selected_bead = st.selectbox("Select Bead Number to Display", bead_numbers)
+    
+    if selected_bead:
+        fig = go.Figure()
+        for (file_name, bead_num), status in st.session_state["anomaly_results_isoforest"].items():
+            if bead_num == selected_bead:
+                df = pd.read_csv(file_name)
+                signal = df.iloc[:, 0].values
+                anomaly_score = st.session_state["anomaly_scores_isoforest"].get((file_name, bead_num), 0)
+                color = 'red' if status == 'anomalous' else 'black'
+                
+                fig.add_trace(go.Scatter(
+                    y=signal,
+                    mode='lines',
+                    line=dict(color=color, width=1),
+                    name=f"{file_name}",
+                    hoverinfo='text',
+                    text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
+                ))
+        
+        fig.update_layout(
+            title=f"Bead Number {selected_bead}: Anomaly Detection Results",
+            xaxis_title="Time Index",
+            yaxis_title="Signal Value",
+            showlegend=True
+        )
+        
+        st.plotly_chart(fig)
+        st.success("Anomaly detection complete!")
