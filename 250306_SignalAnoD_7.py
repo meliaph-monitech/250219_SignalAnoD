@@ -80,34 +80,34 @@ def extract_advanced_features(signal):
     # psd_normalized = positive_psd / np.sum(positive_psd) if np.sum(positive_psd) > 0 else np.zeros_like(positive_psd)
     # spectral_entropy = -np.sum(psd_normalized * np.log2(psd_normalized + 1e-12))
 
-    autocorrelation = np.corrcoef(signal[:-1], signal[1:])[0, 1] if n > 1 else 0
-    peaks, _ = find_peaks(signal)
-    peak_count = len(peaks)
-    zero_crossing_rate = np.sum(np.diff(np.sign(signal)) != 0) / n
-    rms = np.sqrt(np.mean(signal**2))
+    # autocorrelation = np.corrcoef(signal[:-1], signal[1:])[0, 1] if n > 1 else 0
+    # peaks, _ = find_peaks(signal)
+    # peak_count = len(peaks)
+    # zero_crossing_rate = np.sum(np.diff(np.sign(signal)) != 0) / n
+    # rms = np.sqrt(np.mean(signal**2))
 
-    # x = np.arange(n)
-    # slope, _ = np.polyfit(x, signal, 1)
-    # rolling_window = max(10, n // 10)
-    # rolling_mean = np.convolve(signal, np.ones(rolling_window) / rolling_window, mode='valid')
-    # moving_average = np.mean(rolling_mean)
+    x = np.arange(n)
+    slope, _ = np.polyfit(x, signal, 1)
+    rolling_window = max(10, n // 10)
+    rolling_mean = np.convolve(signal, np.ones(rolling_window) / rolling_window, mode='valid')
+    moving_average = np.mean(rolling_mean)
 
-    # threshold = 3 * std_val
-    # outlier_count = np.sum(np.abs(signal - mean_val) > threshold)
-    # extreme_event_duration = 0
-    # current_duration = 0
-    # for value in signal:
-    #     if np.abs(value - mean_val) > threshold:
-    #         current_duration += 1
-    #     else:
-    #         extreme_event_duration = max(extreme_event_duration, current_duration)
-    #         current_duration = 0
+    threshold = 3 * std_val
+    outlier_count = np.sum(np.abs(signal - mean_val) > threshold)
+    extreme_event_duration = 0
+    current_duration = 0
+    for value in signal:
+        if np.abs(value - mean_val) > threshold:
+            current_duration += 1
+        else:
+            extreme_event_duration = max(extreme_event_duration, current_duration)
+            current_duration = 0
 
     # return [mean_val, std_val, min_val, max_val, median_val, skewness, kurt, peak_to_peak, energy, cv, 
     #         dominant_freq, spectral_entropy, autocorrelation, peak_count, zero_crossing_rate, rms, 
     #         slope, moving_average, outlier_count, extreme_event_duration]
 
-    return [autocorrelation, peak_count, zero_crossing_rate, rms]
+    return [slope, moving_average, outlier_count, extreme_event_duration]
 
 
 st.set_page_config(layout="wide")
