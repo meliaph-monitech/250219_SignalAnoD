@@ -90,6 +90,7 @@ with st.sidebar:
                 st.success("Bead segmentation complete")
         
         contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
+        use_contamination_rate = st.checkbox("Use Contamination Rate", value=True)
         
         if st.button("Run Isolation Forest") and "bead_segments" in st.session_state:
             with st.spinner("Running Isolation Forest on all beads..."):
@@ -98,7 +99,11 @@ with st.sidebar:
                 scaler = RobustScaler()
                 feature_matrix = scaler.fit_transform(feature_matrix)
                 
-                iso_forest = IsolationForest(contamination=contamination_rate, random_state=42)
+                # Conditional logic to initialize IsolationForest
+                if use_contamination_rate:
+                    iso_forest = IsolationForest(contamination=contamination_rate, random_state=42)
+                else:
+                    iso_forest = IsolationForest(random_state=42)  # No contamination parameter
                 predictions = iso_forest.fit_predict(feature_matrix)
                 anomaly_scores = -iso_forest.decision_function(feature_matrix)
                 
