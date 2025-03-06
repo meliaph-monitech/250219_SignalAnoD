@@ -58,18 +58,18 @@ def extract_advanced_features(signal):
     """Extracts advanced statistical and signal processing features from a signal."""
     n = len(signal)
     if n == 0:
-        return [0] * 10
+        return [0] * 2
 
-    mean_val = np.mean(signal)
-    std_val = np.std(signal)
-    min_val = np.min(signal)
-    max_val = np.max(signal)
-    median_val = np.median(signal)
+    # mean_val = np.mean(signal)
+    # std_val = np.std(signal)
+    # min_val = np.min(signal)
+    # max_val = np.max(signal)
+    # median_val = np.median(signal)
     skewness = skew(signal)
     kurt = kurtosis(signal)
-    peak_to_peak = max_val - min_val
-    energy = np.sum(signal**2)
-    cv = std_val / mean_val if mean_val != 0 else 0
+    # peak_to_peak = max_val - min_val
+    # energy = np.sum(signal**2)
+    # cv = std_val / mean_val if mean_val != 0 else 0
 
     # signal_fft = fft(signal)
     # psd = np.abs(signal_fft)**2
@@ -107,7 +107,7 @@ def extract_advanced_features(signal):
     #         dominant_freq, spectral_entropy, autocorrelation, peak_count, zero_crossing_rate, rms, 
     #         slope, moving_average, outlier_count, extreme_event_duration]
 
-    return [mean_val, std_val, min_val, max_val, median_val, skewness, kurt, peak_to_peak, energy, cv]
+    return [skewness, kurt]
 
 
 st.set_page_config(layout="wide")
