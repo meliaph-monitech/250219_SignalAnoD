@@ -109,7 +109,7 @@ def extract_advanced_features(signal):
 
 
 st.set_page_config(layout="wide")
-st.title("Laser Welding Anomaly Detection")
+st.title("Laser Welding Anomaly Detection V9 - Feature Selection")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
