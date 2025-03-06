@@ -135,7 +135,11 @@ with st.sidebar:
 
 st.write("## Visualization")
 if "anomaly_results" in st.session_state:
-    bead_numbers = sorted(set(num for _, num in st.session_state["anomaly_results"].keys()))
+    # Safely extract bead numbers from the anomaly results
+    bead_numbers = sorted(
+        set(key[1] for key in st.session_state["anomaly_results"].keys() if isinstance(key, tuple) and len(key) == 2)
+    )
+
     selected_bead = st.selectbox("Select Bead Number to Display", bead_numbers)
 
     if selected_bead:
