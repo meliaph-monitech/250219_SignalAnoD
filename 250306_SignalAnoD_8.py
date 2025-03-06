@@ -85,7 +85,7 @@ def extract_advanced_features(signal):
             current_duration = 0
 
     return [mean_val, std_val, min_val, max_val, median_val, skewness, kurt, peak_to_peak, energy, cv, 
-            spectral_entropy, autocorrelation, peak_count, zero_crossing_rate, rms, 
+            spectral_entropy, autocorrelation, rms, 
             slope, moving_average, outlier_count, extreme_event_duration]
 
 st.set_page_config(layout="wide")
