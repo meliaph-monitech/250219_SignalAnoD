@@ -125,7 +125,9 @@ with st.sidebar:
         threshold = st.number_input("Enter filtering threshold", value=0.0)
         
         # Feature selection
-        feature_names = [f"Feature {i+1}" for i in range(20)]
+        feature_names = ["Mean Value", "STD Value", "Min Value", "Max Value", "Median Value", "Skewness", "Kurtosis", "Peak-to-Peak", "Energy", "Coefficient of Variation (CV)",
+                         "Dominant Frequency", "Spectral Entropy", "Autocorrelation", "Peak Count", "Zero Crossing Rate", "Root Mean Square (RMS)", "Slope", "Moving Average",
+                         "Outlier Count", "Extreme Event Duration"]
         selected_features = st.multiselect(
             "Select features to use for Isolation Forest (1-20 or select 'All')",
             options=["All"] + feature_names,
