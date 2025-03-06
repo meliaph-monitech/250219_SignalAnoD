@@ -10,19 +10,32 @@ from scipy.fft import fft, fftfreq
 from scipy.signal import find_peaks
 import numpy as np
 
+
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
+    """Extracts a ZIP file containing CSV files."""
     if os.path.exists(extract_dir):
         for file in os.listdir(extract_dir):
             os.remove(os.path.join(extract_dir, file))
     else:
         os.makedirs(extract_dir)
     
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(extract_dir)
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
+    except zipfile.BadZipFile:
+        st.error("The uploaded file is not a valid ZIP file.")
+        st.stop()
+
     csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
+    if not csv_files:
+        st.error("No CSV files found in the ZIP file.")
+        st.stop()
+
     return [os.path.join(extract_dir, f) for f in csv_files], extract_dir
 
+
 def segment_beads(df, column, threshold):
+    """Segments data into beads based on a threshold."""
     start_indices = []
     end_indices = []
     signal = df[column].to_numpy()
@@ -39,7 +52,9 @@ def segment_beads(df, column, threshold):
             i += 1
     return list(zip(start_indices, end_indices))
 
+
 def extract_advanced_features(signal):
+    """Extracts advanced statistical and signal processing features from a signal."""
     n = len(signal)
     if n == 0:
         return [0] * 20
@@ -91,6 +106,7 @@ def extract_advanced_features(signal):
             dominant_freq, spectral_entropy, autocorrelation, peak_count, zero_crossing_rate, rms, 
             slope, moving_average, outlier_count, extreme_event_duration]
 
+
 st.set_page_config(layout="wide")
 st.title("Laser Welding Anomaly Detection")
 
@@ -121,11 +137,9 @@ with st.sidebar:
                 st.success("Bead segmentation complete")
                 st.session_state["metadata"] = metadata
         
-        # Contamination rate logic
         contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
         use_contamination_rate = st.checkbox("Use Contamination Rate", value=True)
         
-        # Running Isolation Forest globally
         if st.button("Run Isolation Forest") and "metadata" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
                 all_feature_matrix = []
@@ -143,38 +157,42 @@ with st.sidebar:
                 predictions = iso_forest.fit_predict(all_feature_matrix)
                 anomaly_scores = -iso_forest.decision_function(all_feature_matrix)
                 
-                st.session_state["anomaly_results_isoforest"] = {fn: ('anomalous' if p == -1 else 'normal') for (fn, _), p in zip(all_file_names, predictions)}
-                st.session_state["anomaly_scores_isoforest"] = {fn: s for (fn, _), s in zip(all_file_names, anomaly_scores)}
+                st.session_state["anomaly_results_isoforest"] = {fn: ('anomalous' if p == -1 else 'normal') for fn, p in zip(all_file_names, predictions)}
+                st.session_state["anomaly_scores_isoforest"] = {fn: s for fn, s in zip(all_file_names, anomaly_scores)}
 
 st.write("## Visualization")
 if "anomaly_results_isoforest" in st.session_state:
-    bead_numbers = sorted(set(num for _, num in st.session_state["anomaly_results_isoforest"].keys()))
-    selected_bead = st.selectbox("Select Bead Number to Display", bead_numbers)
-    
-    if selected_bead:
-        fig = go.Figure()
-        for (file_name, bead_num), status in st.session_state["anomaly_results_isoforest"].items():
-            if bead_num == selected_bead:
-                df = pd.read_csv(file_name)
-                signal = df.iloc[:, 0].values
-                anomaly_score = st.session_state["anomaly_scores_isoforest"].get((file_name, bead_num), 0)
-                color = 'red' if status == 'anomalous' else 'black'
-                
-                fig.add_trace(go.Scatter(
-                    y=signal,
-                    mode='lines',
-                    line=dict(color=color, width=1),
-                    name=f"{file_name}",
-                    hoverinfo='text',
-                    text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
-                ))
+    try:
+        bead_numbers = sorted(set(num for _, num in st.session_state["anomaly_results_isoforest"].keys()))
+        selected_bead = st.selectbox("Select Bead Number to Display", bead_numbers)
+
+        if selected_bead:
+            fig = go.Figure()
+            for (file_name, bead_num), status in st.session_state["anomaly_results_isoforest"].items():
+                if bead_num == selected_bead:
+                    df = pd.read_csv(file_name)
+                    signal = df.iloc[:, 0].values
+                    anomaly_score = st.session_state["anomaly_scores_isoforest"].get((file_name, bead_num), 0)
+                    color = 'red' if status == 'anomalous' else 'black'
+
+                    fig.add_trace(go.Scatter(
+                        y=signal,
+                        mode='lines',
+                        line=dict(color=color, width=1),
+                        name=f"{file_name}",
+                        hoverinfo='text',
+                        text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
+                    ))
+
+            fig.update_layout(
+                title=f"Bead Number {selected_bead}: Anomaly Detection Results",
+                xaxis_title="Time Index",
+                yaxis_title="Signal Value",
+                showlegend=True
+            )
+
+            st.plotly_chart(fig)
+    except Exception as e:
+        st.error("An error occurred during visualization.")
+        st.write("Debug Info:", str(e))
         
-        fig.update_layout(
-            title=f"Bead Number {selected_bead}: Anomaly Detection Results",
-            xaxis_title="Time Index",
-            yaxis_title="Signal Value",
-            showlegend=True
-        )
-        
-        st.plotly_chart(fig)
-        st.success("Anomaly detection complete!")
