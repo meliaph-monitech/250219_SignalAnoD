@@ -1,3 +1,5 @@
+## ADVANCED FEATURE EXTRACTION
+
 import streamlit as st
 import zipfile
 import os
@@ -43,7 +45,7 @@ def extract_advanced_features(signal):
     n = len(signal)
     if n == 0:
         return [0] * 20
-    
+
     mean_val = np.mean(signal)
     std_val = np.std(signal)
     min_val = np.min(signal)
@@ -70,11 +72,29 @@ def extract_advanced_features(signal):
     zero_crossing_rate = np.sum(np.diff(np.sign(signal)) != 0) / n
     rms = np.sqrt(np.mean(signal**2))
 
+    x = np.arange(n)
+    slope, _ = np.polyfit(x, signal, 1)
+    rolling_window = max(10, n // 10)
+    rolling_mean = np.convolve(signal, np.ones(rolling_window) / rolling_window, mode='valid')
+    moving_average = np.mean(rolling_mean)
+
+    threshold = 3 * std_val
+    outlier_count = np.sum(np.abs(signal - mean_val) > threshold)
+    extreme_event_duration = 0
+    current_duration = 0
+    for value in signal:
+        if np.abs(value - mean_val) > threshold:
+            current_duration += 1
+        else:
+            extreme_event_duration = max(extreme_event_duration, current_duration)
+            current_duration = 0
+
     return [mean_val, std_val, min_val, max_val, median_val, skewness, kurt, peak_to_peak, energy, cv, 
-            dominant_freq, spectral_entropy, autocorrelation, peak_count, zero_crossing_rate, rms]
+            dominant_freq, spectral_entropy, autocorrelation, peak_count, zero_crossing_rate, rms, 
+            slope, moving_average, outlier_count, extreme_event_duration]
 
 st.set_page_config(layout="wide")
-st.title("Laser Welding Anomaly Detection Across All Beads")
+st.title("Laser Welding Anomaly Detection")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -91,52 +111,41 @@ with st.sidebar:
         
         if st.button("Segment Beads"):
             with st.spinner("Segmenting beads..."):
-                bead_data = []
+                bead_segments = {}
+                metadata = []
                 for file in csv_files:
                     df = pd.read_csv(file)
                     segments = segment_beads(df, filter_column, threshold)
-                    for bead_num, (start, end) in enumerate(segments, start=1):
-                        bead_segment = df.iloc[start:end + 1]
-                        bead_data.append({
-                            "data": bead_segment, "file": file, "bead_number": bead_num,
-                            "start_index": start, "end_index": end
-                        })
-                st.session_state["bead_data"] = bead_data
+                    if segments:
+                        bead_segments[file] = segments
+                        for bead_num, (start, end) in enumerate(segments, start=1):
+                            metadata.append({"file": file, "bead_number": bead_num, "start_index": start, "end_index": end})
                 st.success("Bead segmentation complete")
+                st.session_state["metadata"] = metadata
         
-        contamination_rate = st.slider("Set Contamination Rate", 0.01, 0.5, 0.1, 0.01)
+        # Contamination rate logic
+        contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
         use_contamination_rate = st.checkbox("Use Contamination Rate", value=True)
         
-        if st.button("Run Isolation Forest") and "bead_data" in st.session_state:
+        # Running Isolation Forest globally
+        if st.button("Run Isolation Forest") and "metadata" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
-                feature_matrix = np.array([extract_advanced_features(seg["data"].iloc[:, 0].values) for seg in st.session_state["bead_data"]])
+                all_feature_matrix = []
+                all_file_names = []
+                for entry in st.session_state["metadata"]:
+                    df = pd.read_csv(entry["file"])
+                    bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
+                    features = extract_advanced_features(bead_segment.iloc[:, 0].values)
+                    all_feature_matrix.append(features)
+                    all_file_names.append((entry["file"], entry["bead_number"]))
+                
                 scaler = RobustScaler()
-                feature_matrix = scaler.fit_transform(feature_matrix)
+                all_feature_matrix = scaler.fit_transform(all_feature_matrix)
+                iso_forest = IsolationForest(contamination=contamination_rate if use_contamination_rate else 'auto', random_state=42)
+                predictions = iso_forest.fit_predict(all_feature_matrix)
+                anomaly_scores = -iso_forest.decision_function(all_feature_matrix)
                 
-                if use_contamination_rate:
-                    iso_forest = IsolationForest(contamination=contamination_rate, random_state=42)
-                else:
-                    iso_forest = IsolationForest(random_state=42)
-                
-                predictions = iso_forest.fit_predict(feature_matrix)
-                anomaly_scores = -iso_forest.decision_function(feature_matrix)
-                
-                for idx, seg in enumerate(st.session_state["bead_data"]):
-                    seg["status"] = 'anomalous' if predictions[idx] == -1 else 'normal'
-                    seg["anomaly_score"] = anomaly_scores[idx]
-                
-                st.session_state["anomaly_results"] = st.session_state["bead_data"]
-                st.success("Anomaly detection complete!")
+                st.session_state["anomaly_results_isoforest"] = {fn: ('anomalous' if p == -1 else 'normal') for (fn, _), p in zip(all_file_names, predictions)}
+                st.session_state["anomaly_scores_isoforest"] = {fn: s for (fn, _), s in zip(all_file_names, anomaly_scores)}
 
 st.write("## Visualization")
-if "anomaly_results" in st.session_state:
-    fig = go.Figure()
-    for seg in st.session_state["anomaly_results"]:
-        signal = seg["data"].iloc[:, 0].values
-        color = 'red' if seg["status"] == 'anomalous' else 'black'
-        fig.add_trace(go.Scatter(y=signal, mode='lines', line=dict(color=color), 
-                                 name=f"{seg['file']} - Bead {seg['bead_number']}",
-                                 text=f"File: {seg['file']}<br>Status: {seg['status']}<br>Anomaly Score: {seg['anomaly_score']:.4f}",
-                                 hoverinfo='text'))
-    fig.update_layout(title="Anomaly Detection Across All Beads", xaxis_title="Time Index", yaxis_title="Signal Value", showlegend=True)
-    st.plotly_chart(fig)
