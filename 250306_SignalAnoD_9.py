@@ -107,8 +107,6 @@ def extract_advanced_features(signal):
             dominant_freq, spectral_entropy, autocorrelation, peak_count, zero_crossing_rate, rms, 
             slope, moving_average, outlier_count, extreme_event_duration]
 
-    # return [outlier_count, extreme_event_duration]
-
 
 st.set_page_config(layout="wide")
 st.title("Laser Welding Anomaly Detection")
@@ -126,6 +124,23 @@ with st.sidebar:
         filter_column = st.selectbox("Select column for filtering", columns)
         threshold = st.number_input("Enter filtering threshold", value=0.0)
         
+        # Feature selection
+        feature_names = [f"Feature {i+1}" for i in range(20)]
+        selected_features = st.multiselect(
+            "Select features to use for Isolation Forest (1-20 or select 'All')",
+            options=["All"] + feature_names,
+            default="All"
+        )
+        
+        if "All" in selected_features:
+            selected_features = feature_names  # Automatically select all features
+        
+        if len(selected_features) == 0:
+            st.error("You must select at least one feature.")
+            st.stop()
+        
+        selected_indices = [feature_names.index(f) for f in selected_features]
+
         if st.button("Segment Beads"):
             with st.spinner("Segmenting beads..."):
                 bead_segments = {}
@@ -143,42 +158,6 @@ with st.sidebar:
         contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
         use_contamination_rate = st.checkbox("Use Contamination Rate", value=True)
 
-        # # NEW VER
-        # if st.button("Run Isolation Forest") and "metadata" in st.session_state:
-        #     with st.spinner("Running Isolation Forest..."):
-        #         features_by_bead = defaultdict(list)
-        #         files_by_bead = defaultdict(list)
-        
-        #         # Step 1: Group features by bead number
-        #         for entry in st.session_state["metadata"]:
-        #             df = pd.read_csv(entry["file"])
-        #             bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
-        #             features = extract_advanced_features(bead_segment.iloc[:, 0].values)
-        #             bead_number = entry["bead_number"]
-        #             features_by_bead[bead_number].append(features)
-        #             files_by_bead[bead_number].append((entry["file"], bead_number))
-        
-        #         # Step 2: Combine features into a single matrix for scaling
-        #         all_features = []
-        #         all_file_names = []
-        #         for bead_number, feature_matrix in features_by_bead.items():
-        #             all_features.extend(feature_matrix)
-        #             all_file_names.extend(files_by_bead[bead_number])
-        
-        #         # Step 3: Scale the extracted features
-        #         scaler = StandardScaler() #RobustScaler()
-        #         scaled_features = scaler.fit_transform(all_features)
-        
-        #         # Step 4: Train Isolation Forest
-        #         iso_forest = IsolationForest(contamination=contamination_rate if use_contamination_rate else 'auto', random_state=42)
-        #         predictions = iso_forest.fit_predict(scaled_features)
-        #         anomaly_scores = -iso_forest.decision_function(scaled_features)
-        
-        #         # Step 5: Save results
-        #         st.session_state["anomaly_results_isoforest"] = {fn: ('anomalous' if p == -1 else 'normal') for fn, p in zip(all_file_names, predictions)}
-        #         st.session_state["anomaly_scores_isoforest"] = {fn: s for fn, s in zip(all_file_names, anomaly_scores)}
-
-        #OLD VER
         if st.button("Run Isolation Forest") and "metadata" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
                 features_by_bead = defaultdict(list)
@@ -190,13 +169,14 @@ with st.sidebar:
                     bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
                     features = extract_advanced_features(bead_segment.iloc[:, 0].values)
                     bead_number = entry["bead_number"]
-                    features_by_bead[bead_number].append(features)
+                    # Append only selected features
+                    features_by_bead[bead_number].append([features[i] for i in selected_indices])
                     files_by_bead[bead_number].append((entry["file"], bead_number))
 
                 # Normalize features per bead number
                 scaled_features_by_bead = {}
                 for bead_number, feature_matrix in features_by_bead.items():
-                    scaler = MinMaxScaler() #StandardScaler() #RobustScaler()
+                    scaler = MinMaxScaler()
                     scaled_features_by_bead[bead_number] = scaler.fit_transform(feature_matrix)
 
                 # Combine all scaled features into a single matrix
