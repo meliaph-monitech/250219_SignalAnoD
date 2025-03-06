@@ -60,7 +60,7 @@ def extract_advanced_features(signal):
     if n == 0:
         return [0] * 4
 
-    # mean_val = np.mean(signal)
+    mean_val = np.mean(signal)
     std_val = np.std(signal)
     # min_val = np.min(signal)
     # max_val = np.max(signal)
