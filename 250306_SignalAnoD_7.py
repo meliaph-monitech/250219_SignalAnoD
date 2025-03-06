@@ -58,7 +58,7 @@ def extract_advanced_features(signal):
     """Extracts advanced statistical and signal processing features from a signal."""
     n = len(signal)
     if n == 0:
-        return [0] * 20
+        return [0] * 10
 
     mean_val = np.mean(signal)
     std_val = np.std(signal)
