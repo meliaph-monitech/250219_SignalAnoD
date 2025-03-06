@@ -5,7 +5,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import RobustScaler
-from scipy.signal import spectrogram
 import numpy as np
 from collections import defaultdict
 
@@ -52,45 +51,23 @@ def segment_beads(df, column, threshold):
     return list(zip(start_indices, end_indices))
 
 
-def calculate_bead_zscores(signal, start_points, end_points, Fs, window_size, noverlap, nfft, target_frequency, spectrogram_dB_scale):
-    """Calculates a representative Z-score for each bead."""
-    bead_zscores = []
-    all_intensities = []
+def calculate_bead_zscores(signal, segments):
+    """Calculates Z-scores for each bead segment."""
+    zscores = []
+    overall_mean = np.mean(signal)
+    overall_std = np.std(signal)
 
-    # Step 1: Calculate spectrogram for each bead and extract relevant intensities
-    for start, end in zip(start_points, end_points):
-        bead_data = signal[start:end + 1]
-        fsg, tsg, sg = spectrogram(bead_data, fs=Fs, nperseg=window_size, noverlap=noverlap, nfft=nfft, mode='magnitude')
-        
-        sg_dBpeak = 20 * np.log10(np.abs(sg)) + 20 * np.log10(2 / len(fsg))
-        min_disp_dB = np.round(np.max(sg_dBpeak)) - spectrogram_dB_scale
-        sg_dBpeak[sg_dBpeak < min_disp_dB] = min_disp_dB
+    if overall_std == 0:
+        # Avoid division by zero in case of constant signal
+        overall_std = 1
 
-        # Extract target frequency range
-        target_freq_indices = np.where((fsg >= target_frequency - 5) & (fsg <= target_frequency + 5))[0]
-        target_sg_avg_intensity_over_time = np.mean(sg_dBpeak[target_freq_indices, :] - min_disp_dB, axis=0)
-        all_intensities.extend(target_sg_avg_intensity_over_time)
+    for start, end in segments:
+        bead_data = signal[start:end + 1]  # Extract bead data
+        bead_mean = np.mean(bead_data)
+        bead_zscore = (bead_mean - overall_mean) / overall_std  # Z-score of bead mean
+        zscores.append(bead_zscore)
 
-    # Step 2: Calculate overall mean and standard deviation
-    overall_mean = np.mean(all_intensities)
-    overall_std = np.std(all_intensities)
-
-    # Step 3: Calculate Z-scores for each bead
-    for start, end in zip(start_points, end_points):
-        bead_data = signal[start:end + 1]
-        fsg, tsg, sg = spectrogram(bead_data, fs=Fs, nperseg=window_size, noverlap=noverlap, nfft=nfft, mode='magnitude')
-        
-        sg_dBpeak = 20 * np.log10(np.abs(sg)) + 20 * np.log10(2 / len(fsg))
-        min_disp_dB = np.round(np.max(sg_dBpeak)) - spectrogram_dB_scale
-        sg_dBpeak[sg_dBpeak < min_disp_dB] = min_disp_dB
-
-        target_freq_indices = np.where((fsg >= target_frequency - 5) & (fsg <= target_frequency + 5))[0]
-        target_sg_avg_intensity_over_time = np.mean(sg_dBpeak[target_freq_indices, :] - min_disp_dB, axis=0)
-
-        z_scores = (target_sg_avg_intensity_over_time - overall_mean) / overall_std
-        bead_zscores.append(np.mean(z_scores))
-
-    return bead_zscores
+    return zscores
 
 
 st.set_page_config(layout="wide")
@@ -122,13 +99,6 @@ with st.sidebar:
                             metadata.append({"file": file, "bead_number": bead_num, "start_index": start, "end_index": end})
                 st.success("Bead segmentation complete")
                 st.session_state["metadata"] = metadata
-        
-        Fs = st.number_input("Sampling Frequency", value=1000)  # Example value, user can set it
-        window_size = st.number_input("Window Size", value=256)
-        noverlap = st.number_input("Number of Overlaps", value=128)
-        nfft = st.number_input("NFFT", value=512)
-        target_frequency = st.number_input("Target Frequency", value=50.0)
-        spectrogram_dB_scale = st.number_input("Spectrogram dB Scale", value=70.0)
 
         if st.button("Calculate Z-scores") and "metadata" in st.session_state:
             with st.spinner("Calculating Z-scores..."):
@@ -138,10 +108,7 @@ with st.sidebar:
                     df = pd.read_csv(entry["file"])
                     signal = df[filter_column].to_numpy()
                     segments = segment_beads(df, filter_column, threshold)
-                    start_points, end_points = zip(*segments)
-                    bead_zscores = calculate_bead_zscores(
-                        signal, start_points, end_points, Fs, window_size, noverlap, nfft, target_frequency, spectrogram_dB_scale
-                    )
+                    bead_zscores = calculate_bead_zscores(signal, segments)
                     for bead_num, zscore in enumerate(bead_zscores, start=1):
                         zscores_by_bead[bead_num].append(zscore)
 
