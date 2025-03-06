@@ -86,11 +86,11 @@ def extract_advanced_features(signal):
     # zero_crossing_rate = np.sum(np.diff(np.sign(signal)) != 0) / n
     # rms = np.sqrt(np.mean(signal**2))
 
-    x = np.arange(n)
-    slope, _ = np.polyfit(x, signal, 1)
-    rolling_window = max(10, n // 10)
-    rolling_mean = np.convolve(signal, np.ones(rolling_window) / rolling_window, mode='valid')
-    moving_average = np.mean(rolling_mean)
+    # x = np.arange(n)
+    # slope, _ = np.polyfit(x, signal, 1)
+    # rolling_window = max(10, n // 10)
+    # rolling_mean = np.convolve(signal, np.ones(rolling_window) / rolling_window, mode='valid')
+    # moving_average = np.mean(rolling_mean)
 
     threshold = 3 * std_val
     outlier_count = np.sum(np.abs(signal - mean_val) > threshold)
@@ -107,7 +107,7 @@ def extract_advanced_features(signal):
     #         dominant_freq, spectral_entropy, autocorrelation, peak_count, zero_crossing_rate, rms, 
     #         slope, moving_average, outlier_count, extreme_event_duration]
 
-    return [slope, moving_average, outlier_count, extreme_event_duration]
+    return [outlier_count, extreme_event_duration]
 
 
 st.set_page_config(layout="wide")
