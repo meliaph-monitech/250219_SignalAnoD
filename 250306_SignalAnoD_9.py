@@ -189,7 +189,7 @@ with st.sidebar:
                 # Normalize features per bead number
                 scaled_features_by_bead = {}
                 for bead_number, feature_matrix in features_by_bead.items():
-                    scaler = MinMaxScaler()
+                    scaler = RobustScaler()
                     scaled_features_by_bead[bead_number] = scaler.fit_transform(feature_matrix)
 
                 # Combine all scaled features into a single matrix
