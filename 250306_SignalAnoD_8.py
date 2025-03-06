@@ -3,6 +3,8 @@ import zipfile
 import os
 import pandas as pd
 import plotly.graph_objects as go
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 from collections import defaultdict
 
@@ -49,15 +51,28 @@ def segment_beads(df, column, threshold):
     return list(zip(start_indices, end_indices))
 
 
-def compute_z_scores(bead_data, global_mean, global_std):
-    """Computes Z-scores for a bead's signal relative to global statistics."""
-    if global_std == 0:  # Avoid division by zero
-        return np.zeros_like(bead_data)
-    return (bead_data - global_mean) / global_std
+def compute_z_score_features(signal):
+    """
+    Z-score feature extraction.
+    Computes the mean absolute Z-score for a given signal.
+    """
+    if len(signal) == 0:
+        return 0  # Return 0 if the signal is empty
+
+    mean = np.mean(signal)
+    std = np.std(signal)
+
+    # Avoid division by zero
+    if std == 0:
+        return 0
+
+    z_scores = np.abs((signal - mean) / std)
+    aggregated_z_score = np.mean(z_scores)  # Aggregate Z-scores using mean
+    return aggregated_z_score
 
 
 st.set_page_config(layout="wide")
-st.title("Laser Welding Anomaly Detection with Z-Score Analysis")
+st.title("Laser Welding Anomaly Detection")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -86,46 +101,53 @@ with st.sidebar:
                 st.success("Bead segmentation complete")
                 st.session_state["metadata"] = metadata
 
-        if st.button("Run Z-Score Analysis") and "metadata" in st.session_state:
-            with st.spinner("Running Z-Score Analysis..."):
-                # Step 1: Organize segmented data by bead number
-                bead_data_by_number = defaultdict(list)
+        contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
+        use_contamination_rate = st.checkbox("Use Contamination Rate", value=True)
+
+        if st.button("Run Isolation Forest") and "metadata" in st.session_state:
+            with st.spinner("Running Isolation Forest..."):
+                features_by_bead = defaultdict(list)
+                files_by_bead = defaultdict(list)
+
+                # Group features by bead number
                 for entry in st.session_state["metadata"]:
                     df = pd.read_csv(entry["file"])
-                    bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1, 0].values  # Extract signal
-                    bead_data_by_number[entry["bead_number"]].append(bead_segment)
-
-                # Step 2: Compute global statistics (mean, std) for each bead number
-                global_stats = {}
-                for bead_number, signals in bead_data_by_number.items():
-                    combined_signal = np.concatenate(signals)
-                    global_mean = np.mean(combined_signal)
-                    global_std = np.std(combined_signal)
-                    global_stats[bead_number] = (global_mean, global_std)
-
-                # Step 3: Compute Z-scores and aggregate results
-                anomalies = defaultdict(dict)
-                for entry in st.session_state["metadata"]:
-                    df = pd.read_csv(entry["file"])
-                    bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1, 0].values  # Extract signal
-
+                    bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1, 0].values
+                    z_score_feature = compute_z_score_features(bead_segment)  # Replace advanced features with Z-score
                     bead_number = entry["bead_number"]
-                    global_mean, global_std = global_stats[bead_number]
-                    z_scores = compute_z_scores(bead_segment, global_mean, global_std)
+                    features_by_bead[bead_number].append([z_score_feature])  # Wrap in a list for compatibility
+                    files_by_bead[bead_number].append((entry["file"], bead_number))
 
-                    # Aggregate Z-scores for the bead (mean absolute Z-score)
-                    aggregated_z_score = np.mean(np.abs(z_scores))
-                    anomalies[entry["file"]][bead_number] = {
-                        "aggregated_z_score": aggregated_z_score,
-                        "is_anomalous": aggregated_z_score > 3  # Flag as anomalous if Z > 3
-                    }
+                # Combine all features into a single matrix
+                all_features = []
+                all_file_names = []
+                for bead_number, feature_matrix in features_by_bead.items():
+                    all_features.extend(feature_matrix)
+                    all_file_names.extend(files_by_bead[bead_number])
 
-                # Save results to session state
-                st.session_state["anomaly_results_zscore"] = anomalies
+                # Normalize all features
+                scaler = MinMaxScaler()
+                all_scaled_features = scaler.fit_transform(all_features)
+
+                # Train Isolation Forest
+                iso_forest = IsolationForest(
+                    contamination=contamination_rate if use_contamination_rate else "auto",
+                    random_state=42
+                )
+                predictions = iso_forest.fit_predict(all_scaled_features)
+                anomaly_scores = -iso_forest.decision_function(all_scaled_features)
+
+                # Save results
+                st.session_state["anomaly_results_isoforest"] = {
+                    fn: ("anomalous" if p == -1 else "normal") for fn, p in zip(all_file_names, predictions)
+                }
+                st.session_state["anomaly_scores_isoforest"] = {
+                    fn: s for fn, s in zip(all_file_names, anomaly_scores)
+                }
 
 st.write("## Visualization")
-if "anomaly_results_zscore" in st.session_state:
-    bead_numbers = sorted(set(num for file_results in st.session_state["anomaly_results_zscore"].values() for num in file_results.keys()))
+if "anomaly_results_isoforest" in st.session_state:
+    bead_numbers = sorted(set(num for _, num in st.session_state["anomaly_results_isoforest"].keys()))
     selected_bead = st.selectbox("Select Bead Number to Display", bead_numbers)
 
     if selected_bead:
@@ -144,24 +166,23 @@ if "anomaly_results_zscore" in st.session_state:
             signal = df.iloc[start_idx:end_idx + 1, 0].values  # Extract only the bead's signal
 
             # Get anomaly status and score
-            result = st.session_state["anomaly_results_zscore"][file_name].get(selected_bead, {})
-            aggregated_z_score = result.get("aggregated_z_score", 0)
-            is_anomalous = result.get("is_anomalous", False)
+            status = st.session_state["anomaly_results_isoforest"].get((file_name, selected_bead), "normal")
+            anomaly_score = st.session_state["anomaly_scores_isoforest"].get((file_name, selected_bead), 0)
 
             # Set color based on anomaly status
-            color = 'red' if is_anomalous else 'black'
+            color = "red" if status == "anomalous" else "black"
 
             fig.add_trace(go.Scatter(
                 y=signal,
-                mode='lines',
+                mode="lines",
                 line=dict(color=color, width=1),
                 name=f"{file_name}",
-                hoverinfo='text',
-                text=f"File: {file_name}<br>Aggregated Z-Score: {aggregated_z_score:.4f}<br>Anomalous: {is_anomalous}"
+                hoverinfo="text",
+                text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
             ))
 
         fig.update_layout(
-            title=f"Bead Number {selected_bead}: Z-Score Anomaly Detection Results",
+            title=f"Bead Number {selected_bead}: Anomaly Detection Results",
             xaxis_title="Time Index",
             yaxis_title="Signal Value",
             showlegend=True
