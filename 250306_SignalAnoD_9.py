@@ -128,19 +128,30 @@ with st.sidebar:
         feature_names = ["Mean Value", "STD Value", "Min Value", "Max Value", "Median Value", "Skewness", "Kurtosis", "Peak-to-Peak", "Energy", "Coefficient of Variation (CV)",
                          "Dominant Frequency", "Spectral Entropy", "Autocorrelation", "Peak Count", "Zero Crossing Rate", "Root Mean Square (RMS)", "Slope", "Moving Average",
                          "Outlier Count", "Extreme Event Duration"]
+        # Add "All" as the first option
+        options = ["All"] + feature_names
+        
+        # Feature selection in the sidebar
         selected_features = st.multiselect(
-            "Select features to use for Isolation Forest (1-20 or select 'All')",
-            options=["All"] + feature_names,
-            default="All"
+            "Select features to use for Isolation Forest",
+            options=options,  # Includes "All" and individual features
+            default="All"  # Default selection is "All"
         )
         
-        if "All" in selected_features:
-            selected_features = feature_names  # Automatically select all features
+        # Enforce logical behavior: If "All" is selected, deselect all other features
+        if "All" in selected_features and len(selected_features) > 1:
+            selected_features = ["All"]
         
-        if len(selected_features) == 0:
+        # If individual features are selected, deselect "All"
+        elif "All" not in selected_features and len(selected_features) == 0:
             st.error("You must select at least one feature.")
             st.stop()
         
+        # If "All" is selected, use all features
+        if "All" in selected_features:
+            selected_features = feature_names  # Automatically use all features
+        
+        # Map selected feature names to their corresponding indices
         selected_indices = [feature_names.index(f) for f in selected_features]
 
         if st.button("Segment Beads"):
