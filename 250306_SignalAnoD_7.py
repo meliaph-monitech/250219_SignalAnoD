@@ -142,13 +142,14 @@ with st.sidebar:
         
         contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
         use_contamination_rate = st.checkbox("Use Contamination Rate", value=True)
-        
+
+        # NEW VER
         if st.button("Run Isolation Forest") and "metadata" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
                 features_by_bead = defaultdict(list)
                 files_by_bead = defaultdict(list)
-
-                # Group features by bead number
+        
+                # Step 1: Group features by bead number
                 for entry in st.session_state["metadata"]:
                     df = pd.read_csv(entry["file"])
                     bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
@@ -156,31 +157,66 @@ with st.sidebar:
                     bead_number = entry["bead_number"]
                     features_by_bead[bead_number].append(features)
                     files_by_bead[bead_number].append((entry["file"], bead_number))
-
-                # Normalize features per bead number
-                scaled_features_by_bead = {}
-                for bead_number, feature_matrix in features_by_bead.items():
-                    scaler = RobustScaler()
-                    scaled_features_by_bead[bead_number] = scaler.fit_transform(feature_matrix)
-
-                # Combine all scaled features into a single matrix
-                all_scaled_features = []
+        
+                # Step 2: Combine features into a single matrix for scaling
+                all_features = []
                 all_file_names = []
-                for bead_number, scaled_features in scaled_features_by_bead.items():
-                    all_scaled_features.extend(scaled_features)
+                for bead_number, feature_matrix in features_by_bead.items():
+                    all_features.extend(feature_matrix)
                     all_file_names.extend(files_by_bead[bead_number])
-
-                # Convert the list to a NumPy array for Isolation Forest
-                all_scaled_features = np.array(all_scaled_features)
-
-                # Train Isolation Forest
+        
+                # Step 3: Scale the extracted features
+                scaler = RobustScaler()
+                scaled_features = scaler.fit_transform(all_features)
+        
+                # Step 4: Train Isolation Forest
                 iso_forest = IsolationForest(contamination=contamination_rate if use_contamination_rate else 'auto', random_state=42)
-                predictions = iso_forest.fit_predict(all_scaled_features)
-                anomaly_scores = -iso_forest.decision_function(all_scaled_features)
-
-                # Save results
+                predictions = iso_forest.fit_predict(scaled_features)
+                anomaly_scores = -iso_forest.decision_function(scaled_features)
+        
+                # Step 5: Save results
                 st.session_state["anomaly_results_isoforest"] = {fn: ('anomalous' if p == -1 else 'normal') for fn, p in zip(all_file_names, predictions)}
                 st.session_state["anomaly_scores_isoforest"] = {fn: s for fn, s in zip(all_file_names, anomaly_scores)}
+
+        # #OLD VER
+        # if st.button("Run Isolation Forest") and "metadata" in st.session_state:
+        #     with st.spinner("Running Isolation Forest..."):
+        #         features_by_bead = defaultdict(list)
+        #         files_by_bead = defaultdict(list)
+
+        #         # Group features by bead number
+        #         for entry in st.session_state["metadata"]:
+        #             df = pd.read_csv(entry["file"])
+        #             bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
+        #             features = extract_advanced_features(bead_segment.iloc[:, 0].values)
+        #             bead_number = entry["bead_number"]
+        #             features_by_bead[bead_number].append(features)
+        #             files_by_bead[bead_number].append((entry["file"], bead_number))
+
+        #         # Normalize features per bead number
+        #         scaled_features_by_bead = {}
+        #         for bead_number, feature_matrix in features_by_bead.items():
+        #             scaler = RobustScaler()
+        #             scaled_features_by_bead[bead_number] = scaler.fit_transform(feature_matrix)
+
+        #         # Combine all scaled features into a single matrix
+        #         all_scaled_features = []
+        #         all_file_names = []
+        #         for bead_number, scaled_features in scaled_features_by_bead.items():
+        #             all_scaled_features.extend(scaled_features)
+        #             all_file_names.extend(files_by_bead[bead_number])
+
+        #         # Convert the list to a NumPy array for Isolation Forest
+        #         all_scaled_features = np.array(all_scaled_features)
+
+        #         # Train Isolation Forest
+        #         iso_forest = IsolationForest(contamination=contamination_rate if use_contamination_rate else 'auto', random_state=42)
+        #         predictions = iso_forest.fit_predict(all_scaled_features)
+        #         anomaly_scores = -iso_forest.decision_function(all_scaled_features)
+
+        #         # Save results
+        #         st.session_state["anomaly_results_isoforest"] = {fn: ('anomalous' if p == -1 else 'normal') for fn, p in zip(all_file_names, predictions)}
+        #         st.session_state["anomaly_scores_isoforest"] = {fn: s for fn, s in zip(all_file_names, anomaly_scores)}
 
 st.write("## Visualization")
 if "anomaly_results_isoforest" in st.session_state:
