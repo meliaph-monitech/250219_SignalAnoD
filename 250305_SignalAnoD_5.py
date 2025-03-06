@@ -162,37 +162,45 @@ with st.sidebar:
 
 st.write("## Visualization")
 if "anomaly_results_isoforest" in st.session_state:
-    try:
-        bead_numbers = sorted(set(num for _, num in st.session_state["anomaly_results_isoforest"].keys()))
-        selected_bead = st.selectbox("Select Bead Number to Display", bead_numbers)
+    bead_numbers = sorted(set(num for _, num in st.session_state["anomaly_results_isoforest"].keys()))
+    selected_bead = st.selectbox("Select Bead Number to Display", bead_numbers)
 
-        if selected_bead:
-            fig = go.Figure()
-            for (file_name, bead_num), status in st.session_state["anomaly_results_isoforest"].items():
-                if bead_num == selected_bead:
-                    df = pd.read_csv(file_name)
-                    signal = df.iloc[:, 0].values
-                    anomaly_score = st.session_state["anomaly_scores_isoforest"].get((file_name, bead_num), 0)
-                    color = 'red' if status == 'anomalous' else 'black'
+    if selected_bead:
+        fig = go.Figure()
 
-                    fig.add_trace(go.Scatter(
-                        y=signal,
-                        mode='lines',
-                        line=dict(color=color, width=1),
-                        name=f"{file_name}",
-                        hoverinfo='text',
-                        text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
-                    ))
+        # Filter data for the selected bead number
+        selected_bead_data = [entry for entry in st.session_state["metadata"] if entry["bead_number"] == selected_bead]
 
-            fig.update_layout(
-                title=f"Bead Number {selected_bead}: Anomaly Detection Results",
-                xaxis_title="Time Index",
-                yaxis_title="Signal Value",
-                showlegend=True
-            )
+        for bead_info in selected_bead_data:
+            file_name = bead_info["file"]
+            start_idx = bead_info["start_index"]
+            end_idx = bead_info["end_index"]
 
-            st.plotly_chart(fig)
-    except Exception as e:
-        st.error("An error occurred during visualization.")
-        st.write("Debug Info:", str(e))
-        
+            # Load data and extract the signal for the specific bead
+            df = pd.read_csv(file_name)
+            signal = df.iloc[start_idx:end_idx + 1, 0].values  # Extract only the bead's signal
+
+            # Get anomaly status and score
+            status = st.session_state["anomaly_results_isoforest"].get((file_name, selected_bead), "normal")
+            anomaly_score = st.session_state["anomaly_scores_isoforest"].get((file_name, selected_bead), 0)
+
+            # Set color based on anomaly status
+            color = 'red' if status == 'anomalous' else 'black'
+
+            fig.add_trace(go.Scatter(
+                y=signal,
+                mode='lines',
+                line=dict(color=color, width=1),
+                name=f"{file_name}",
+                hoverinfo='text',
+                text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
+            ))
+
+        fig.update_layout(
+            title=f"Bead Number {selected_bead}: Anomaly Detection Results",
+            xaxis_title="Time Index",
+            yaxis_title="Signal Value",
+            showlegend=True
+        )
+
+        st.plotly_chart(fig)
