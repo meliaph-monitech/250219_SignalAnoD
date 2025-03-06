@@ -185,6 +185,25 @@ with st.sidebar:
                     anomaly_results_isoforest[bead_number] = bead_results
                     anomaly_scores_isoforest[bead_number] = bead_scores
 
+if "anomaly_results_isoforest" in st.session_state:
+    if st.button("Generate Result"):
+        # Prepare data for export
+        results_df = pd.DataFrame([
+            {"File Name": file_name, "Bead Number": bead_num, "Status": status}
+            for (file_name, bead_num), status in st.session_state["anomaly_results_isoforest"].items()
+        ])
+
+        # Convert DataFrame to CSV
+        csv_data = results_df.to_csv(index=False).encode('utf-8')
+
+        # Create a download button
+        st.download_button(
+            label="Download CSV",
+            data=csv_data,
+            file_name="anomaly_detection_results.csv",
+            mime="text/csv"
+        )
+
 
 st.write("## Visualization")
 if "chosen_bead_data" in st.session_state and "anomaly_results_isoforest" in locals():
