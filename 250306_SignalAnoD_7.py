@@ -4,7 +4,7 @@ import os
 import pandas as pd
 import plotly.graph_objects as go
 from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import RobustScaler, StandardScaler
+from sklearn.preprocessing import RobustScaler, StandardScaler, MinMaxScaler
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft, fftfreq
 from scipy.signal import find_peaks
@@ -196,7 +196,7 @@ with st.sidebar:
                 # Normalize features per bead number
                 scaled_features_by_bead = {}
                 for bead_number, feature_matrix in features_by_bead.items():
-                    scaler = StandardScaler() #RobustScaler()
+                    scaler = MinMaxScaler() #StandardScaler() #RobustScaler()
                     scaled_features_by_bead[bead_number] = scaler.fit_transform(feature_matrix)
 
                 # Combine all scaled features into a single matrix
