@@ -112,8 +112,18 @@ with st.sidebar:
                 # Group features by bead number
                 for entry in st.session_state["metadata"]:
                     df = pd.read_csv(entry["file"])
+                    
+                    # Extract raw signal for the bead
                     bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1, 0].values
-                    z_score_feature = compute_z_score_features(bead_segment)  # Replace advanced features with Z-score
+                    
+                    # Normalize the raw signal locally
+                    scaler = MinMaxScaler()
+                    bead_segment_normalized = scaler.fit_transform(bead_segment.reshape(-1, 1)).flatten()
+                    
+                    # Compute features from normalized signal
+                    z_score_feature = compute_z_score_features(bead_segment_normalized)
+                    
+                    # Store features and file information
                     bead_number = entry["bead_number"]
                     features_by_bead[bead_number].append([z_score_feature])  # Wrap in a list for compatibility
                     files_by_bead[bead_number].append((entry["file"], bead_number))
@@ -125,17 +135,13 @@ with st.sidebar:
                     all_features.extend(feature_matrix)
                     all_file_names.extend(files_by_bead[bead_number])
 
-                # Normalize all features
-                scaler = MinMaxScaler()
-                all_scaled_features = scaler.fit_transform(all_features)
-
                 # Train Isolation Forest
                 iso_forest = IsolationForest(
                     contamination=contamination_rate if use_contamination_rate else "auto",
                     random_state=42
                 )
-                predictions = iso_forest.fit_predict(all_scaled_features)
-                anomaly_scores = -iso_forest.decision_function(all_scaled_features)
+                predictions = iso_forest.fit_predict(all_features)
+                anomaly_scores = -iso_forest.decision_function(all_features)
 
                 # Save results
                 st.session_state["anomaly_results_isoforest"] = {
@@ -161,9 +167,9 @@ if "anomaly_results_isoforest" in st.session_state:
             start_idx = bead_info["start_index"]
             end_idx = bead_info["end_index"]
 
-            # Load data and extract the signal for the specific bead
+            # Load data and extract the raw signal for the specific bead
             df = pd.read_csv(file_name)
-            signal = df.iloc[start_idx:end_idx + 1, 0].values  # Extract only the bead's signal
+            raw_signal = df.iloc[start_idx:end_idx + 1, 0].values  # Extract raw signal
 
             # Get anomaly status and score
             status = st.session_state["anomaly_results_isoforest"].get((file_name, selected_bead), "normal")
@@ -173,7 +179,7 @@ if "anomaly_results_isoforest" in st.session_state:
             color = "red" if status == "anomalous" else "black"
 
             fig.add_trace(go.Scatter(
-                y=signal,
+                y=raw_signal,  # Use raw signal for plotting
                 mode="lines",
                 line=dict(color=color, width=1),
                 name=f"{file_name}",
