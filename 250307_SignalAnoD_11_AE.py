@@ -119,7 +119,7 @@ def train_autoencoder(feature_matrix, epochs=50, batch_size=32):
 
 # **Streamlit App Setup**
 st.set_page_config(layout="wide")
-st.title("Laser Welding Anomaly Detection with Autoencoder")
+st.title("Laser Welding Anomaly Detection with Autoencoder V11")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
