@@ -1,18 +1,16 @@
+## ADVANCED FEATURE EXTRACTION
 import streamlit as st
 import zipfile
 import os
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import RobustScaler, MinMaxScaler, StandardScaler
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft, fftfreq
+from scipy.signal import find_peaks
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Dense
 
-# **Function to extract ZIP files**
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
     if os.path.exists(extract_dir):
         for file in os.listdir(extract_dir):
@@ -25,7 +23,6 @@ def extract_zip(zip_path, extract_dir="extracted_csvs"):
     csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
     return [os.path.join(extract_dir, f) for f in csv_files], extract_dir
 
-# **Function to segment beads based on a threshold**
 def segment_beads(df, column, threshold):
     start_indices = []
     end_indices = []
@@ -43,11 +40,14 @@ def segment_beads(df, column, threshold):
             i += 1
     return list(zip(start_indices, end_indices))
 
-# **Function to extract features per bead**
 def extract_advanced_features(signal):
     n = len(signal)
     if n == 0:
-        return [0] * 20
+        return [0] * 20  # Default feature values
+
+    # Handle NaN or Inf values
+    if np.any(np.isnan(signal)) or np.any(np.isinf(signal)):
+        return [0] * 20  # Return default values if data is bad
 
     mean_val = np.mean(signal)
     std_val = np.std(signal)
@@ -72,8 +72,9 @@ def extract_advanced_features(signal):
     autocorrelation = np.corrcoef(signal[:-1], signal[1:])[0, 1] if n > 1 else 0
     rms = np.sqrt(np.mean(signal**2))
 
+    # Handle edge cases for np.polyfit
     x = np.arange(n)
-    if len(set(signal)) == 1 or len(signal) < 2:
+    if len(set(signal)) == 1 or len(signal) < 2:  # Constant or too short signal
         slope = 0
     else:
         try:
@@ -97,9 +98,29 @@ def extract_advanced_features(signal):
             current_duration = 0
 
     return [mean_val, std_val, min_val, max_val, median_val, skewness, kurt, peak_to_peak, energy, cv, 
-            spectral_entropy, autocorrelation, rms, slope, moving_average, outlier_count, extreme_event_duration]
+            spectral_entropy, autocorrelation, rms, 
+            slope, moving_average, outlier_count, extreme_event_duration]
 
-# **Autoencoder Model**
+def normalize_signal_per_bead(bead_data):
+    """
+    Normalize the raw signal data for each bead segment.
+    This ensures the scale for each bead is consistent while preserving the pattern.
+    """
+    normalized_data = []
+    for bead in bead_data:
+        raw_signal = bead["data"].iloc[:, 0].values  # Keep a copy of the raw signal
+        scaler = MinMaxScaler()  # You can change to StandardScaler() for z-score normalization
+        if len(raw_signal) > 1:  # Only normalize if there is more than one data point
+            normalized_signal = scaler.fit_transform(raw_signal.reshape(-1, 1)).flatten()
+        else:
+            normalized_signal = raw_signal  # If only one data point, no normalization
+
+        # Add normalized signal as a new column in the DataFrame (preserve the raw signal)
+        bead["data"]["normalized_signal"] = normalized_signal
+        bead["raw_signal"] = raw_signal  # Store the raw signal separately
+        normalized_data.append(bead)
+    return normalized_data
+
 def build_autoencoder(input_dim):
     input_layer = Input(shape=(input_dim,))
     encoded = Dense(64, activation='relu')(input_layer)
@@ -112,15 +133,14 @@ def build_autoencoder(input_dim):
     autoencoder.compile(optimizer='adam', loss='mse')
     return autoencoder
 
-# **Train Autoencoder**
 def train_autoencoder(feature_matrix, epochs=50, batch_size=32):
     autoencoder = build_autoencoder(feature_matrix.shape[1])
     autoencoder.fit(feature_matrix, feature_matrix, epochs=epochs, batch_size=batch_size, shuffle=True, verbose=1)
     return autoencoder
 
-# **Streamlit App Setup**
+# Streamlit App Setup
 st.set_page_config(layout="wide")
-st.title("Laser Welding Anomaly Detection with Autoencoder V11")
+st.title("Laser Welding Anomaly Detection with Autoencoder")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -158,21 +178,28 @@ with st.sidebar:
                     df = pd.read_csv(entry["file"])
                     bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
                     chosen_bead_data.append({"data": bead_segment, "file": entry["file"], "bead_number": entry["bead_number"], "start_index": entry["start_index"], "end_index": entry["end_index"]})
+            chosen_bead_data = normalize_signal_per_bead(chosen_bead_data)
             st.session_state["chosen_bead_data"] = chosen_bead_data
-            st.success("Beads selected successfully!")
+            st.success("Beads selected and normalized successfully!")
 
 if st.button("Run Autoencoder") and "chosen_bead_data" in st.session_state:
     with st.spinner("Running Autoencoder Anomaly Detection..."):
-        bead_data = [seg["data"].iloc[:, 0].values for seg in st.session_state["chosen_bead_data"]]
+        bead_data = [seg["data"]["normalized_signal"].values for seg in st.session_state["chosen_bead_data"]]
+        
+        # Extract features for each bead
         feature_matrix = np.array([extract_advanced_features(signal) for signal in bead_data])
         scaler = MinMaxScaler()
         feature_matrix = scaler.fit_transform(feature_matrix)
 
-        autoencoder = train_autoencoder(feature_matrix)
+        # Train Autoencoder and calculate reconstruction error
+        autoencoder = train_autoencoder(feature_matrix, epochs=50, batch_size=32)
         reconstruction_error = np.mean(np.square(feature_matrix - autoencoder.predict(feature_matrix)), axis=1)
-        threshold = np.percentile(reconstruction_error, 95)  # 95th percentile as threshold
+        
+        # Set anomaly threshold (95th percentile of reconstruction error)
+        threshold = np.percentile(reconstruction_error, 95)
         anomalies = reconstruction_error > threshold
 
+        # Save anomaly results
         st.session_state["anomaly_results"] = [{"Bead Number": seg["bead_number"], 
                                                 "File": seg["file"], 
                                                 "Status": "Anomalous" if anomaly else "Normal", 
@@ -180,43 +207,67 @@ if st.button("Run Autoencoder") and "chosen_bead_data" in st.session_state:
                                                for seg, anomaly, error in zip(st.session_state["chosen_bead_data"], anomalies, reconstruction_error)]
         st.success("Anomaly detection complete!")
 
-if "anomaly_results" in st.session_state:
-    st.write("### Anomaly Detection Results")
-    st.write(pd.DataFrame(st.session_state["anomaly_results"]))
+with st.sidebar:
+    uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
+    if uploaded_file:
+        with open("temp.zip", "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        csv_files, extract_dir = extract_zip("temp.zip")
+        st.success(f"Extracted {len(csv_files)} CSV files")
+        
+        df_sample = pd.read_csv(csv_files[0])
+        columns = df_sample.columns.tolist()
+        filter_column = st.selectbox("Select column for filtering", columns)
+        threshold = st.number_input("Enter filtering threshold", value=0.0)
+        
+        if st.button("Segment Beads"):
+            with st.spinner("Segmenting beads..."):
+                bead_segments = {}
+                metadata = []
+                for file in csv_files:
+                    df = pd.read_csv(file)
+                    segments = segment_beads(df, filter_column, threshold)
+                    if segments:
+                        bead_segments[file] = segments
+                        for bead_num, (start, end) in enumerate(segments, start=1):
+                            metadata.append({"file": file, "bead_number": bead_num, "start_index": start, "end_index": end})
+                st.success("Bead segmentation complete")
+                st.session_state["metadata"] = metadata
 
+        bead_numbers = st.text_input("Enter bead numbers (comma-separated)")
+        if st.button("Select Beads") and "metadata" in st.session_state:
+            selected_beads = [int(b.strip()) for b in bead_numbers.split(",") if b.strip().isdigit()]
+            chosen_bead_data = []
+            for entry in st.session_state["metadata"]:
+                if entry["bead_number"] in selected_beads:
+                    df = pd.read_csv(entry["file"])
+                    bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
+                    chosen_bead_data.append({"data": bead_segment, "file": entry["file"], "bead_number": entry["bead_number"], "start_index": entry["start_index"], "end_index": entry["end_index"]})
+            chosen_bead_data = normalize_signal_per_bead(chosen_bead_data)
+            st.session_state["chosen_bead_data"] = chosen_bead_data
+            st.success("Beads selected and normalized successfully!")
 
-st.write("## Visualization")
+if st.button("Run Autoencoder") and "chosen_bead_data" in st.session_state:
+    with st.spinner("Running Autoencoder Anomaly Detection..."):
+        bead_data = [seg["data"]["normalized_signal"].values for seg in st.session_state["chosen_bead_data"]]
+        
+        # Extract features for each bead
+        feature_matrix = np.array([extract_advanced_features(signal) for signal in bead_data])
+        scaler = MinMaxScaler()
+        feature_matrix = scaler.fit_transform(feature_matrix)
 
-if "chosen_bead_data" in st.session_state and "anomaly_results" in st.session_state:
-    anomaly_results_dict = {res["Bead Number"]: res for res in st.session_state["anomaly_results"]}
+        # Train Autoencoder and calculate reconstruction error
+        autoencoder = train_autoencoder(feature_matrix, epochs=50, batch_size=32)
+        reconstruction_error = np.mean(np.square(feature_matrix - autoencoder.predict(feature_matrix)), axis=1)
+        
+        # Set anomaly threshold (95th percentile of reconstruction error)
+        threshold = np.percentile(reconstruction_error, 95)
+        anomalies = reconstruction_error > threshold
 
-    for bead_data in st.session_state["chosen_bead_data"]:
-        bead_number = bead_data["bead_number"]
-        file_name = bead_data["file"]
-        raw_signal = bead_data["data"].iloc[:, 0].values  # Assuming first column is the signal
-
-        if bead_number in anomaly_results_dict:
-            result = anomaly_results_dict[bead_number]
-            status = result["Status"]
-            anomaly_score = result["Reconstruction Error"]
-            color = 'red' if status == "Anomalous" else 'black'
-
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                y=raw_signal,
-                mode='lines',
-                line=dict(color=color, width=1),
-                name=f"{file_name}",
-                hoverinfo='text',
-                text=f"File: {file_name}<br>Status: {status}<br>Reconstruction Error: {anomaly_score:.4f}"
-            ))
-
-            fig.update_layout(
-                title=f"Bead Number {bead_number}: Anomaly Detection Results (Raw Data)",
-                xaxis_title="Time Index",
-                yaxis_title="Raw Signal Value",
-                showlegend=True
-            )
-            st.plotly_chart(fig)
-
-st.success("Anomaly detection complete!")
+        # Save anomaly results
+        st.session_state["anomaly_results"] = [{"Bead Number": seg["bead_number"], 
+                                                "File": seg["file"], 
+                                                "Status": "Anomalous" if anomaly else "Normal", 
+                                                "Reconstruction Error": error} 
+                                               for seg, anomaly, error in zip(st.session_state["chosen_bead_data"], anomalies, reconstruction_error)]
+        st.success("Anomaly detection complete!")
