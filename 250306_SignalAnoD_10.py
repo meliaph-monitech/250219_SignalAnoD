@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import plotly.graph_objects as go
 from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import RobustScaler, MinMaxScaler, StandardScaler
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft, fftfreq
 from scipy.signal import find_peaks
