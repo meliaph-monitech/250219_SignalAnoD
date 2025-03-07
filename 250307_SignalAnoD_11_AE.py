@@ -3,6 +3,7 @@ import zipfile
 import os
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 from sklearn.preprocessing import MinMaxScaler
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft, fftfreq
@@ -182,3 +183,29 @@ if st.button("Run Autoencoder") and "chosen_bead_data" in st.session_state:
 if "anomaly_results" in st.session_state:
     st.write("### Anomaly Detection Results")
     st.write(pd.DataFrame(st.session_state["anomaly_results"]))
+
+
+
+if "anomaly_results" in st.session_state:
+    st.write("### Anomaly Detection Results")
+    df_results = pd.DataFrame(st.session_state["anomaly_results"])
+    st.write(df_results)
+
+    # Visualization 1: Histogram of Reconstruction Errors
+    st.write("### Reconstruction Error Distribution")
+    fig_hist = px.histogram(df_results, x="Reconstruction Error", nbins=30, 
+                            title="Reconstruction Error Distribution",
+                            color=df_results["Status"], color_discrete_map={"Normal": "blue", "Anomalous": "red"})
+    st.plotly_chart(fig_hist, use_container_width=True)
+
+    # Visualization 2: Feature Space Scatter Plot
+    st.write("### Feature Space Visualization")
+    feature_matrix_df = pd.DataFrame(feature_matrix, columns=[f"Feature_{i}" for i in range(feature_matrix.shape[1])])
+    feature_matrix_df["Status"] = ["Anomalous" if anomaly else "Normal" for anomaly in anomalies]
+
+    fig_scatter = px.scatter(feature_matrix_df, x="Feature_0", y="Feature_1", 
+                              color="Status", 
+                              title="Feature Space (First Two Features)",
+                              color_discrete_map={"Normal": "blue", "Anomalous": "red"})
+    st.plotly_chart(fig_scatter, use_container_width=True)
+
