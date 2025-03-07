@@ -43,7 +43,11 @@ def segment_beads(df, column, threshold):
 def extract_advanced_features(signal):
     n = len(signal)
     if n == 0:
-        return [0] * 20
+        return [0] * 20  # Default feature values
+
+    # Handle NaN or Inf values
+    if np.any(np.isnan(signal)) or np.any(np.isinf(signal)):
+        return [0] * 20  # Return default values if data is bad
 
     mean_val = np.mean(signal)
     std_val = np.std(signal)
@@ -56,6 +60,7 @@ def extract_advanced_features(signal):
     energy = np.sum(signal**2)
     cv = std_val / mean_val if mean_val != 0 else 0
 
+    # FFT calculations
     signal_fft = fft(signal)
     psd = np.abs(signal_fft)**2
     freqs = fftfreq(n, 1)
@@ -67,8 +72,16 @@ def extract_advanced_features(signal):
     autocorrelation = np.corrcoef(signal[:-1], signal[1:])[0, 1] if n > 1 else 0
     rms = np.sqrt(np.mean(signal**2))
 
+    # Handle edge cases for np.polyfit
     x = np.arange(n)
-    slope, _ = np.polyfit(x, signal, 1)
+    if len(set(signal)) == 1 or len(signal) < 2:  # Constant or too short signal
+        slope = 0
+    else:
+        try:
+            slope, _ = np.polyfit(x, signal, 1)
+        except np.linalg.LinAlgError:
+            slope = 0
+
     rolling_window = max(10, n // 10)
     rolling_mean = np.convolve(signal, np.ones(rolling_window) / rolling_window, mode='valid')
     moving_average = np.mean(rolling_mean)
@@ -87,7 +100,6 @@ def extract_advanced_features(signal):
     return [mean_val, std_val, min_val, max_val, median_val, skewness, kurt, peak_to_peak, energy, cv, 
             spectral_entropy, autocorrelation, rms, 
             slope, moving_average, outlier_count, extreme_event_duration]
-
 st.set_page_config(layout="wide")
 st.title("Laser Welding Anomaly Detection V8 - V4 with Feature Selection")
 
