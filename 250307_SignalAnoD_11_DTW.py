@@ -110,9 +110,18 @@ def calculate_majority_pattern(bead_data):
     majority_patterns = {}
     for bead in bead_data:
         bead_number = bead["bead_number"]
+        
+        # Extract normalized signals for the current bead
         signals = [seg["data"]["normalized_signal"].values for seg in bead_data if seg["bead_number"] == bead_number]
-        majority_pattern = np.mean(signals, axis=0)  # Calculate mean signal
+        
+        # Ensure all signals have the same length by truncating or padding
+        max_length = min(len(signal) for signal in signals)  # Use the shortest signal length
+        trimmed_signals = [signal[:max_length] for signal in signals]  # Truncate all signals
+        
+        # Calculate the mean signal
+        majority_pattern = np.mean(trimmed_signals, axis=0)  # Calculate mean signal
         majority_patterns[bead_number] = majority_pattern
+    
     return majority_patterns
 
 def calculate_dtw_distance(signal, reference_signal):
