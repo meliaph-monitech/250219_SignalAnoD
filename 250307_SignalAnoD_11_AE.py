@@ -195,6 +195,8 @@ if st.button("Run Autoencoder") and "chosen_bead_data" in st.session_state:
 
         st.session_state["anomaly_results"] = [{"Bead Number": seg["bead_number"], 
                                                 "File": seg["file"], 
+                                                "start_index": seg["start_index"],
+                                                "end_index": seg["end_index"],
                                                 "Status": "Anomalous" if anomaly else "Normal", 
                                                 "Reconstruction Error": error} 
                                                for seg, anomaly, error in zip(st.session_state["chosen_bead_data"], anomalies, reconstruction_error)]
