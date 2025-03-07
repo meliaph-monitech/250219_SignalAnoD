@@ -4,23 +4,54 @@ import os
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler, RobustScaler
-from keras.models import Model
-from keras.layers import Input, Dense
+
 import plotly.graph_objects as go
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft, fftfreq
 
-# **Autoencoder Model**
+from tensorflow.keras.layers import Input, Dense, Dropout, BatchNormalization, LeakyReLU
+from tensorflow.keras.models import Model
+from tensorflow.keras.regularizers import l2
+
+# **Updated Autoencoder Architecture**
 def build_autoencoder(input_dim):
     input_layer = Input(shape=(input_dim,))
-    encoded = Dense(64, activation='relu')(input_layer)
-    encoded = Dense(32, activation='relu')(encoded)
-    encoded = Dense(16, activation='relu')(encoded)
-    decoded = Dense(32, activation='relu')(encoded)
-    decoded = Dense(64, activation='relu')(decoded)
-    decoded = Dense(input_dim, activation='linear')(decoded)
-    autoencoder = Model(inputs=input_layer, outputs=decoded)
+    
+    # Encoder
+    encoded = Dense(128, activation=LeakyReLU(alpha=0.2), kernel_regularizer=l2(0.01))(input_layer)
+    encoded = BatchNormalization()(encoded)
+    encoded = Dropout(0.2)(encoded)
+    
+    encoded = Dense(64, activation=LeakyReLU(alpha=0.2), kernel_regularizer=l2(0.01))(encoded)
+    encoded = BatchNormalization()(encoded)
+    encoded = Dropout(0.2)(encoded)
+    
+    encoded = Dense(32, activation=LeakyReLU(alpha=0.2), kernel_regularizer=l2(0.01))(encoded)
+    encoded = BatchNormalization()(encoded)
+    encoded = Dropout(0.2)(encoded)
+    
+    # Bottleneck (small layer for efficient representation)
+    bottleneck = Dense(8, activation=LeakyReLU(alpha=0.2))(encoded)  # You can change this value for bottleneck size
+
+    # Decoder
+    decoded = Dense(32, activation=LeakyReLU(alpha=0.2))(bottleneck)
+    decoded = BatchNormalization()(decoded)
+    decoded = Dropout(0.2)(decoded)
+    
+    decoded = Dense(64, activation=LeakyReLU(alpha=0.2))(decoded)
+    decoded = BatchNormalization()(decoded)
+    decoded = Dropout(0.2)(decoded)
+    
+    decoded = Dense(128, activation=LeakyReLU(alpha=0.2))(decoded)
+    decoded = BatchNormalization()(decoded)
+    decoded = Dropout(0.2)(decoded)
+    
+    output_layer = Dense(input_dim, activation='linear')(decoded)
+
+    # Compile model
+    autoencoder = Model(inputs=input_layer, outputs=output_layer)
     autoencoder.compile(optimizer='adam', loss='mse')
+
     return autoencoder
 
 # **Train Autoencoder**
