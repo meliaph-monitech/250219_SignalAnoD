@@ -143,7 +143,8 @@ st.set_page_config(layout="wide")
 st.title("Laser Welding Anomaly Detection with Autoencoder")
 
 with st.sidebar:
-    uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
+    # Assign a unique key to the file_uploader element
+    uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"], key="zip_uploader")
     if uploaded_file:
         with open("temp.zip", "wb") as f:
             f.write(uploaded_file.getbuffer())
