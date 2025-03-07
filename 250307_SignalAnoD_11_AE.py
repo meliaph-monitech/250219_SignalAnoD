@@ -185,27 +185,38 @@ if "anomaly_results" in st.session_state:
     st.write(pd.DataFrame(st.session_state["anomaly_results"]))
 
 
+st.write("## Visualization")
 
-if "anomaly_results" in st.session_state:
-    st.write("### Anomaly Detection Results")
-    df_results = pd.DataFrame(st.session_state["anomaly_results"])
-    st.write(df_results)
+if "chosen_bead_data" in st.session_state and "anomaly_results" in st.session_state:
+    anomaly_results_dict = {res["Bead Number"]: res for res in st.session_state["anomaly_results"]}
 
-    # Visualization 1: Histogram of Reconstruction Errors
-    st.write("### Reconstruction Error Distribution")
-    fig_hist = px.histogram(df_results, x="Reconstruction Error", nbins=30, 
-                            title="Reconstruction Error Distribution",
-                            color=df_results["Status"], color_discrete_map={"Normal": "blue", "Anomalous": "red"})
-    st.plotly_chart(fig_hist, use_container_width=True)
+    for bead_data in st.session_state["chosen_bead_data"]:
+        bead_number = bead_data["bead_number"]
+        file_name = bead_data["file"]
+        raw_signal = bead_data["data"].iloc[:, 0].values  # Assuming first column is the signal
 
-    # Visualization 2: Feature Space Scatter Plot
-    st.write("### Feature Space Visualization")
-    feature_matrix_df = pd.DataFrame(feature_matrix, columns=[f"Feature_{i}" for i in range(feature_matrix.shape[1])])
-    feature_matrix_df["Status"] = ["Anomalous" if anomaly else "Normal" for anomaly in anomalies]
+        if bead_number in anomaly_results_dict:
+            result = anomaly_results_dict[bead_number]
+            status = result["Status"]
+            anomaly_score = result["Reconstruction Error"]
+            color = 'red' if status == "Anomalous" else 'black'
 
-    fig_scatter = px.scatter(feature_matrix_df, x="Feature_0", y="Feature_1", 
-                              color="Status", 
-                              title="Feature Space (First Two Features)",
-                              color_discrete_map={"Normal": "blue", "Anomalous": "red"})
-    st.plotly_chart(fig_scatter, use_container_width=True)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                y=raw_signal,
+                mode='lines',
+                line=dict(color=color, width=1),
+                name=f"{file_name}",
+                hoverinfo='text',
+                text=f"File: {file_name}<br>Status: {status}<br>Reconstruction Error: {anomaly_score:.4f}"
+            ))
 
+            fig.update_layout(
+                title=f"Bead Number {bead_number}: Anomaly Detection Results (Raw Data)",
+                xaxis_title="Time Index",
+                yaxis_title="Raw Signal Value",
+                showlegend=True
+            )
+            st.plotly_chart(fig)
+
+st.success("Anomaly detection complete!")
