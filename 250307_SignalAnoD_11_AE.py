@@ -3,10 +3,12 @@ import zipfile
 import os
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, RobustScaler
 from keras.models import Model
 from keras.layers import Input, Dense
 import plotly.graph_objects as go
+from scipy.stats import skew, kurtosis
+from scipy.fft import fft, fftfreq
 
 # **Autoencoder Model**
 def build_autoencoder(input_dim):
@@ -27,22 +29,63 @@ def train_autoencoder(feature_matrix, epochs=50, batch_size=32):
     autoencoder.fit(feature_matrix, feature_matrix, epochs=epochs, batch_size=batch_size, shuffle=True, verbose=1)
     return autoencoder
 
-# **Feature Extraction**
+# **Feature Extraction (Unchanged)**
 def extract_advanced_features(signal):
-    if len(signal) == 0:
-        return [0] * 10  # Default features if signal is empty
-    return [
-        np.mean(signal),
-        np.std(signal),
-        np.min(signal),
-        np.max(signal),
-        np.median(signal),
-        np.ptp(signal),  # Peak-to-peak
-        np.sum(signal**2),  # Energy
-        np.sqrt(np.mean(signal**2)),  # RMS
-        np.var(signal),  # Variance
-        np.mean(np.abs(signal - np.mean(signal)))  # Mean absolute deviation
-    ]
+    n = len(signal)
+    if n == 0:
+        return [0] * 20  # Default feature values
+
+    if np.any(np.isnan(signal)) or np.any(np.isinf(signal)):
+        return [0] * 20  # Return default values if data is bad
+
+    mean_val = np.mean(signal)
+    std_val = np.std(signal)
+    min_val = np.min(signal)
+    max_val = np.max(signal)
+    median_val = np.median(signal)
+    skewness = skew(signal)
+    kurt = kurtosis(signal)
+    peak_to_peak = max_val - min_val
+    energy = np.sum(signal**2)
+    cv = std_val / mean_val if mean_val != 0 else 0
+
+    signal_fft = fft(signal)
+    psd = np.abs(signal_fft)**2
+    freqs = fftfreq(n, 1)
+    positive_freqs = freqs[:n // 2]
+    positive_psd = psd[:n // 2]
+    psd_normalized = positive_psd / np.sum(positive_psd) if np.sum(positive_psd) > 0 else np.zeros_like(positive_psd)
+    spectral_entropy = -np.sum(psd_normalized * np.log2(psd_normalized + 1e-12))
+
+    autocorrelation = np.corrcoef(signal[:-1], signal[1:])[0, 1] if n > 1 else 0
+    rms = np.sqrt(np.mean(signal**2))
+
+    x = np.arange(n)
+    if len(set(signal)) == 1 or len(signal) < 2:  # Constant or too short signal
+        slope = 0
+    else:
+        try:
+            slope, _ = np.polyfit(x, signal, 1)
+        except np.linalg.LinAlgError:
+            slope = 0
+
+    rolling_window = max(10, n // 10)
+    rolling_mean = np.convolve(signal, np.ones(rolling_window) / rolling_window, mode='valid')
+    moving_average = np.mean(rolling_mean)
+
+    threshold = 3 * std_val
+    outlier_count = np.sum(np.abs(signal - mean_val) > threshold)
+    extreme_event_duration = 0
+    current_duration = 0
+    for value in signal:
+        if np.abs(value - mean_val) > threshold:
+            current_duration += 1
+        else:
+            extreme_event_duration = max(extreme_event_duration, current_duration)
+            current_duration = 0
+
+    return [mean_val, std_val, min_val, max_val, median_val, skewness, kurt, peak_to_peak, energy, cv,
+            spectral_entropy, autocorrelation, rms, slope, moving_average, outlier_count, extreme_event_duration]
 
 # **File Extraction**
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
@@ -117,10 +160,31 @@ with st.sidebar:
             st.session_state["chosen_bead_data"] = chosen_bead_data
             st.success("Beads selected successfully!")
 
+# Feature Names
+feature_names = ["Mean Value", "STD Value", "Min Value", "Max Value", "Median Value", "Skewness", "Kurtosis", "Peak-to-Peak", "Energy", "Coefficient of Variation (CV)",
+                 "Spectral Entropy", "Autocorrelation", "Root Mean Square (RMS)", "Slope", "Moving Average",
+                 "Outlier Count", "Extreme Event Duration"]
+options = ["All"] + feature_names
+selected_features = st.multiselect(
+    "Select features to use for Autoencoder",
+    options=options,
+    default="All"
+)
+
+if "All" in selected_features and len(selected_features) > 1:
+    selected_features = ["All"]
+elif "All" not in selected_features and len(selected_features) == 0:
+    st.error("You must select at least one feature.")
+    st.stop()
+if "All" in selected_features:
+    selected_features = feature_names
+selected_indices = [feature_names.index(f) for f in selected_features]
+
 if st.button("Run Autoencoder") and "chosen_bead_data" in st.session_state:
     with st.spinner("Running Autoencoder Anomaly Detection..."):
         bead_data = [seg["data"].iloc[:, 0].values for seg in st.session_state["chosen_bead_data"]]
         feature_matrix = np.array([extract_advanced_features(signal) for signal in bead_data])
+        feature_matrix = feature_matrix[:, selected_indices]  # Select only the chosen features
         scaler = MinMaxScaler()
         feature_matrix = scaler.fit_transform(feature_matrix)
 
