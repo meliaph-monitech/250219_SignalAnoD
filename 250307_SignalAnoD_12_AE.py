@@ -150,7 +150,7 @@ def segment_beads(df, column, threshold):
 
 # **Streamlit App**
 st.set_page_config(layout="wide")
-st.title("Laser Welding Anomaly Detection with Autoencoder")
+st.title("Laser Welding Anomaly Detection V12 with Autoencoder II")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
