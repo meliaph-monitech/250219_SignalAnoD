@@ -158,6 +158,11 @@ with st.sidebar:
 
 if "cluster_results" in st.session_state:
     st.write("## Visualization")
+    visualization_type = st.sidebar.radio(
+        "Select Visualization Type",
+        ("Raw Signal", "Normalized Signal")
+    )
+    
     bead_data = st.session_state["chosen_bead_data"]
     cluster_results = st.session_state["cluster_results"]
     colors = ["blue", "green", "red", "purple", "orange", "brown", "pink", "gray", "olive", "cyan"]
@@ -169,10 +174,14 @@ if "cluster_results" in st.session_state:
         for idx, segment in enumerate(bead_segments):
             file_name = segment["file"]
             cluster = cluster_results[file_name]
-            raw_signal = segment["raw_signal"]
+            signal = (
+                segment["raw_signal"]
+                if visualization_type == "Raw Signal"
+                else segment["data"]["normalized_signal"]
+            )
             color = colors[cluster % len(colors)]
             fig.add_trace(go.Scatter(
-                y=raw_signal,
+                y=signal,
                 mode='lines',
                 line=dict(color=color, width=1),
                 name=f"{file_name} (Cluster {cluster})",
@@ -180,9 +189,9 @@ if "cluster_results" in st.session_state:
                 text=f"File: {file_name}<br>Cluster: {cluster}"
             ))
         fig.update_layout(
-            title=f"Bead Number {bead_number}: Clustering Results (Raw Data)",
+            title=f"Bead Number {bead_number}: Clustering Results ({visualization_type} Data)",
             xaxis_title="Time Index",
-            yaxis_title="Raw Signal Value",
+            yaxis_title="Signal Value",
             showlegend=True
         )
         st.plotly_chart(fig)
