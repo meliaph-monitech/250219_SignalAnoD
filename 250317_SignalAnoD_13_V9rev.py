@@ -103,7 +103,7 @@ def normalize_signal_per_bead(bead_data):
 
 
 st.set_page_config(layout="wide")
-st.title("Laser Welding Anomaly Detection V9 - Normalized Data Visualization")
+st.title("Laser Welding Anomaly Detection V9 - Visualization for Raw and Normalized Data")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -142,17 +142,13 @@ with st.sidebar:
             st.session_state["chosen_bead_data"] = chosen_bead_data
             st.success("Beads normalized successfully!")
         
-        contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
-        use_normalized_data = st.checkbox("Use Normalized Data for Model Input", value=True)
+        contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1)
 
         if st.button("Run Isolation Forest") and "chosen_bead_data" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
                 bead_data = st.session_state["chosen_bead_data"]
-                signals = [
-                    bead["data"]["normalized_signal"].values if use_normalized_data else bead["raw_signal"]
-                    for bead in bead_data
-                ]
-                features = np.array([extract_advanced_features(signal) for signal in signals])
+                normalized_signals = [bead["data"]["normalized_signal"].values for bead in bead_data]
+                features = np.array([extract_advanced_features(signal) for signal in normalized_signals])
                 
                 scaler = RobustScaler()
                 scaled_features = scaler.fit_transform(features)
