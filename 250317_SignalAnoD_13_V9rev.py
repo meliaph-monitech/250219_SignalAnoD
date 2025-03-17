@@ -4,13 +4,11 @@ import os
 import pandas as pd
 import plotly.graph_objects as go
 from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import RobustScaler, StandardScaler, MinMaxScaler
+from sklearn.preprocessing import RobustScaler, MinMaxScaler
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft, fftfreq
-from scipy.signal import find_peaks
 import numpy as np
 from collections import defaultdict
-
 
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
     """Extracts a ZIP file containing CSV files."""
@@ -34,7 +32,6 @@ def extract_zip(zip_path, extract_dir="extracted_csvs"):
 
     return [os.path.join(extract_dir, f) for f in csv_files], extract_dir
 
-
 def segment_beads(df, column, threshold):
     """Segments data into beads based on a threshold."""
     start_indices = []
@@ -53,7 +50,6 @@ def segment_beads(df, column, threshold):
             i += 1
     return list(zip(start_indices, end_indices))
 
-
 def extract_advanced_features(signal):
     """Extracts advanced statistical and signal processing features from a signal."""
     n = len(signal)
@@ -71,41 +67,37 @@ def extract_advanced_features(signal):
     energy = np.sum(signal**2)
     cv = std_val / mean_val if mean_val != 0 else 0
 
+    # FFT calculations
     signal_fft = fft(signal)
     psd = np.abs(signal_fft)**2
     freqs = fftfreq(n, 1)
-    positive_freqs = freqs[:n // 2]
-    positive_psd = psd[:n // 2]
-    psd_normalized = positive_psd / np.sum(positive_psd) if np.sum(positive_psd) > 0 else np.zeros_like(positive_psd)
+    psd_normalized = psd[:n // 2] / np.sum(psd[:n // 2]) if np.sum(psd[:n // 2]) > 0 else np.zeros_like(psd[:n // 2])
     spectral_entropy = -np.sum(psd_normalized * np.log2(psd_normalized + 1e-12))
 
-    autocorrelation = np.corrcoef(signal[:-1], signal[1:])[0, 1] if n > 1 else 0
     rms = np.sqrt(np.mean(signal**2))
 
+    # Handle slope
     x = np.arange(n)
-    slope, _ = np.polyfit(x, signal, 1)
-    rolling_window = max(10, n // 10)
-    rolling_mean = np.convolve(signal, np.ones(rolling_window) / rolling_window, mode='valid')
-    moving_average = np.mean(rolling_mean)
+    slope = np.polyfit(x, signal, 1)[0] if len(set(signal)) > 1 else 0
 
-    threshold = 3 * std_val
-    outlier_count = np.sum(np.abs(signal - mean_val) > threshold)
-    extreme_event_duration = 0
-    current_duration = 0
-    for value in signal:
-        if np.abs(value - mean_val) > threshold:
-            current_duration += 1
+    return [mean_val, std_val, min_val, max_val, median_val, skewness, kurt, peak_to_peak,
+            energy, cv, spectral_entropy, rms, slope]
+
+def normalize_signal_per_bead(bead_data):
+    """Normalizes signal data per bead."""
+    for bead in bead_data:
+        raw_signal = bead["data"].iloc[:, 0].values
+        scaler = MinMaxScaler()
+        if len(raw_signal) > 1:
+            normalized_signal = scaler.fit_transform(raw_signal.reshape(-1, 1)).flatten()
         else:
-            extreme_event_duration = max(extreme_event_duration, current_duration)
-            current_duration = 0
-
-    return [mean_val, std_val, min_val, max_val, median_val, skewness, kurt, peak_to_peak, energy, cv, 
-            spectral_entropy, autocorrelation, rms, 
-            slope, moving_average, outlier_count, extreme_event_duration]
-
+            normalized_signal = raw_signal
+        bead["data"]["normalized_signal"] = normalized_signal
+        bead["raw_signal"] = raw_signal
+    return bead_data
 
 st.set_page_config(layout="wide")
-st.title("Laser Welding Anomaly Detection V9 - Global Analysis with Feature Selection")
+st.title("Laser Welding Anomaly Detection V13")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -120,36 +112,6 @@ with st.sidebar:
         filter_column = st.selectbox("Select column for filtering", columns)
         threshold = st.number_input("Enter filtering threshold", value=0.0)
         
-        # Feature selection
-        feature_names = ["Mean Value", "STD Value", "Min Value", "Max Value", "Median Value", "Skewness", "Kurtosis", "Peak-to-Peak", "Energy", "Coefficient of Variation (CV)",
-                         "Spectral Entropy", "Autocorrelation", "Root Mean Square (RMS)", "Slope", "Moving Average",
-                         "Outlier Count", "Extreme Event Duration"]
-        # Add "All" as the first option
-        options = ["All"] + feature_names
-        
-        # Feature selection in the sidebar
-        selected_features = st.multiselect(
-            "Select features to use for Isolation Forest",
-            options=options,  # Includes "All" and individual features
-            default="All"  # Default selection is "All"
-        )
-        
-        # Enforce logical behavior: If "All" is selected, deselect all other features
-        if "All" in selected_features and len(selected_features) > 1:
-            selected_features = ["All"]
-        
-        # If individual features are selected, deselect "All"
-        elif "All" not in selected_features and len(selected_features) == 0:
-            st.error("You must select at least one feature.")
-            st.stop()
-        
-        # If "All" is selected, use all features
-        if "All" in selected_features:
-            selected_features = feature_names  # Automatically use all features
-        
-        # Map selected feature names to their corresponding indices
-        selected_indices = [feature_names.index(f) for f in selected_features]
-
         if st.button("Segment Beads"):
             with st.spinner("Segmenting beads..."):
                 bead_segments = {}
@@ -163,24 +125,31 @@ with st.sidebar:
                             metadata.append({"file": file, "bead_number": bead_num, "start_index": start, "end_index": end})
                 st.success("Bead segmentation complete")
                 st.session_state["metadata"] = metadata
-        
+
+        if "metadata" in st.session_state:
+            bead_data = []
+            for entry in st.session_state["metadata"]:
+                df = pd.read_csv(entry["file"])
+                bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
+                bead_data.append({"data": bead_segment, "file": entry["file"], "bead_number": entry["bead_number"]})
+
+            bead_data = normalize_signal_per_bead(bead_data)
+            st.session_state["chosen_bead_data"] = bead_data
+
         contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
         use_contamination_rate = st.checkbox("Use Contamination Rate", value=True)
 
-        if st.button("Run Isolation Forest") and "metadata" in st.session_state:
+        if st.button("Run Isolation Forest") and "chosen_bead_data" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
                 features_by_bead = defaultdict(list)
                 files_by_bead = defaultdict(list)
 
-                # Group features by bead number
-                for entry in st.session_state["metadata"]:
-                    df = pd.read_csv(entry["file"])
-                    bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
-                    features = extract_advanced_features(bead_segment.iloc[:, 0].values)
+                for entry in st.session_state["chosen_bead_data"]:
+                    raw_signal = entry["raw_signal"]
+                    features = extract_advanced_features(raw_signal)
                     bead_number = entry["bead_number"]
-                    # Append only selected features
-                    features_by_bead[bead_number].append([features[i] for i in selected_indices])
-                    files_by_bead[bead_number].append((entry["file"], bead_number))
+                    features_by_bead[bead_number].append(features)
+                    files_by_bead[bead_number].append(entry["file"])
 
                 # Normalize features per bead number
                 scaled_features_by_bead = {}
@@ -209,7 +178,6 @@ with st.sidebar:
 
 if "anomaly_results_isoforest" in st.session_state:
     if st.button("Generate Result"):
-        # Prepare data for export
         results_df = pd.DataFrame([
             {"File Name": file_name, "Bead Number": bead_num, "Status": status}
             for (file_name, bead_num), status in st.session_state["anomaly_results_isoforest"].items()
@@ -226,9 +194,13 @@ if "anomaly_results_isoforest" in st.session_state:
             mime="text/csv"
         )
 
-
 st.write("## Visualization")
 if "anomaly_results_isoforest" in st.session_state:
+    visualization_type = st.sidebar.radio(
+        "Select Visualization Type",
+        ("Raw Signal", "Normalized Signal")
+    )
+    
     bead_numbers = sorted(set(num for _, num in st.session_state["anomaly_results_isoforest"].keys()))
     selected_bead = st.selectbox("Select Bead Number to Display", bead_numbers)
 
@@ -236,26 +208,23 @@ if "anomaly_results_isoforest" in st.session_state:
         fig = go.Figure()
 
         # Filter data for the selected bead number
-        selected_bead_data = [entry for entry in st.session_state["metadata"] if entry["bead_number"] == selected_bead]
+        selected_bead_data = [entry for entry in st.session_state["chosen_bead_data"] if entry["bead_number"] == selected_bead]
 
         for bead_info in selected_bead_data:
             file_name = bead_info["file"]
-            start_idx = bead_info["start_index"]
-            end_idx = bead_info["end_index"]
-
-            # Load data and extract the signal for the specific bead
-            df = pd.read_csv(file_name)
-            signal = df.iloc[start_idx:end_idx + 1, 0].values  # Extract only the bead's signal
+            raw_signal = bead_info["raw_signal"]
+            normalized_signal = bead_info["data"]["normalized_signal"].values  # Extract normalized signal
 
             # Get anomaly status and score
             status = st.session_state["anomaly_results_isoforest"].get((file_name, selected_bead), "normal")
             anomaly_score = st.session_state["anomaly_scores_isoforest"].get((file_name, selected_bead), 0)
 
-            # Set color based on anomaly status
+            # Choose signal to visualize based on user selection
+            signal_to_plot = normalized_signal if visualization_type == "Normalized Signal" else raw_signal
             color = 'red' if status == 'anomalous' else 'black'
 
             fig.add_trace(go.Scatter(
-                y=signal,
+                y=signal_to_plot,
                 mode='lines',
                 line=dict(color=color, width=1),
                 name=f"{file_name}",
