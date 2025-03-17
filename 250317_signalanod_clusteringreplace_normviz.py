@@ -135,7 +135,7 @@ with st.sidebar:
             st.session_state["chosen_bead_data"] = chosen_bead_data
             st.success("Beads selected and normalized successfully!")
         
-        num_clusters = st.slider("Select Number of Clusters", min_value=2, max_value=10, value=3)
+        num_clusters = st.slider("Select Number of Clusters", min_value=2, max_value=10, value=6)
         
         if st.button("Run K-Means Clustering") and "chosen_bead_data" in st.session_state:
             with st.spinner("Running K-Means Clustering..."):
