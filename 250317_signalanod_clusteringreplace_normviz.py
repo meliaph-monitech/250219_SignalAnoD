@@ -166,12 +166,17 @@ if "cluster_results" in st.session_state:
     bead_data = st.session_state["chosen_bead_data"]
     cluster_results = st.session_state["cluster_results"]
     colors = ["blue", "green", "red", "purple", "orange", "brown", "pink", "gray", "olive", "cyan"]
-    
+
     for bead_number in set(seg["bead_number"] for seg in bead_data):
         bead_segments = [seg for seg in bead_data if seg["bead_number"] == bead_number]
         file_names = [seg["file"] for seg in bead_segments]
+        
+        # Sort bead_segments by cluster number for proper legend ordering
+        bead_segments_sorted = sorted(bead_segments, key=lambda seg: cluster_results[seg["file"]])
+        
         fig = go.Figure()
-        for idx, segment in enumerate(bead_segments):
+        
+        for segment in bead_segments_sorted:
             file_name = segment["file"]
             cluster = cluster_results[file_name]
             signal = (
@@ -184,10 +189,11 @@ if "cluster_results" in st.session_state:
                 y=signal,
                 mode='lines',
                 line=dict(color=color, width=1),
-                name=f"{file_name} (Cluster {cluster})",
+                name=f"Cluster {cluster}: {file_name}",
                 hoverinfo='text',
                 text=f"File: {file_name}<br>Cluster: {cluster}"
             ))
+        
         fig.update_layout(
             title=f"Bead Number {bead_number}: Clustering Results ({visualization_type} Data)",
             xaxis_title="Time Index",
