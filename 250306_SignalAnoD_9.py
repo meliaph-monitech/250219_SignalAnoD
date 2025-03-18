@@ -238,6 +238,8 @@ if "anomaly_results_isoforest" in st.session_state:
         # Filter data for the selected bead number
         selected_bead_data = [entry for entry in st.session_state["metadata"] if entry["bead_number"] == selected_bead]
 
+        traces = []  # Store traces to sort by anomaly status
+
         for bead_info in selected_bead_data:
             file_name = bead_info["file"]
             start_idx = bead_info["start_index"]
@@ -254,14 +256,23 @@ if "anomaly_results_isoforest" in st.session_state:
             # Set color based on anomaly status
             color = 'red' if status == 'anomalous' else 'black'
 
-            fig.add_trace(go.Scatter(
+            # Create a trace for this signal
+            trace = go.Scatter(
                 y=signal,
                 mode='lines',
                 line=dict(color=color, width=1),
-                name=f"{file_name}",
+                name=f"{file_name} ({status})",
                 hoverinfo='text',
                 text=f"File: {file_name}<br>Status: {status}<br>Anomaly Score: {anomaly_score:.4f}"
-            ))
+            )
+            traces.append((status, trace))
+
+        # Sort traces by anomaly status: anomalous first, then normal
+        sorted_traces = sorted(traces, key=lambda x: 0 if x[0] == 'anomalous' else 1)
+
+        # Add sorted traces to the figure
+        for _, trace in sorted_traces:
+            fig.add_trace(trace)
 
         fig.update_layout(
             title=f"Bead Number {selected_bead}: Anomaly Detection Results",
