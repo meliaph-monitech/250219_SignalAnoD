@@ -82,7 +82,7 @@ def normalize_signal_per_bead(bead_data):
     normalized_data = []
     for bead in bead_data:
         raw_signal = bead["data"].iloc[:, 0].values
-        scaler = MinMaxScaler()
+        scaler = RobustScaler() # MinMaxScaler()
         if len(raw_signal) > 1:
             normalized_signal = scaler.fit_transform(raw_signal.reshape(-1, 1)).flatten()
         else:
