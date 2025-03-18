@@ -138,6 +138,7 @@ with st.sidebar:
         num_clusters = st.slider("Select Number of Clusters", min_value=2, max_value=10, value=6)
         
         if st.button("Run K-Means Clustering") and "chosen_bead_data" in st.session_state:
+            st.session_state["cluster_results"] = None  # Clear previous results
             with st.spinner("Running K-Means Clustering..."):
                 bead_data = st.session_state["chosen_bead_data"]
                 normalized_signals = [seg["data"]["normalized_signal"].values for seg in bead_data]
@@ -146,11 +147,15 @@ with st.sidebar:
                 scaler = RobustScaler()
                 feature_matrix = scaler.fit_transform(feature_matrix)
                 
-                kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+                kmeans = KMeans(n_clusters=num_clusters, n_init=10, random_state=42)
                 clusters = kmeans.fit_predict(feature_matrix)
+
+                # Normalize cluster labels to be contiguous integers
+                unique_labels, normalized_clusters = np.unique(clusters, return_inverse=True)
                 
                 cluster_results = {}
-                for idx, cluster in enumerate(clusters):
+                # Update cluster_results with normalized labels
+                for idx, cluster in enumerate(normalized_clusters):
                     cluster_results[file_names[idx]] = cluster
                 
                 st.session_state["cluster_results"] = cluster_results
