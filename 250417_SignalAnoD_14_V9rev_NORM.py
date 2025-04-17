@@ -157,24 +157,33 @@ with st.sidebar:
         
         contamination_rate = st.slider("Set Contamination Rate", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
         use_contamination_rate = st.checkbox("Use Contamination Rate", value=True)
+        use_normalized_signal = st.checkbox("Display Normalized Signal", value=False)
 
         if st.button("Run Isolation Forest") and "metadata" in st.session_state:
             with st.spinner("Running Isolation Forest..."):
                 features_by_bead = defaultdict(list)
                 files_by_bead = defaultdict(list)
+                raw_signals_by_bead = defaultdict(list)
 
                 for entry in st.session_state["metadata"]:
                     df = pd.read_csv(entry["file"])
                     bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
                     features = extract_advanced_features(bead_segment.iloc[:, 0].values)
                     bead_number = entry["bead_number"]
+                    raw_signals_by_bead[bead_number].append(bead_segment.iloc[:, 0].values)
                     features_by_bead[bead_number].append([features[i] for i in selected_indices])
                     files_by_bead[bead_number].append((entry["file"], bead_number))
 
+                # Normalize features and raw signals across all files for the same bead number
                 scaled_features_by_bead = {}
+                normalized_signals_by_bead = {}
                 for bead_number, feature_matrix in features_by_bead.items():
                     scaler = RobustScaler()
                     scaled_features_by_bead[bead_number] = scaler.fit_transform(feature_matrix)
+
+                    # Normalize raw signals
+                    raw_signals = np.concatenate(raw_signals_by_bead[bead_number])
+                    normalized_signals_by_bead[bead_number] = scaler.fit_transform(raw_signals.reshape(-1, 1)).flatten()
 
                 all_scaled_features = []
                 all_file_names = []
@@ -190,6 +199,8 @@ with st.sidebar:
 
                 st.session_state["anomaly_results_isoforest"] = {fn: ('anomalous' if p == -1 else 'normal') for fn, p in zip(all_file_names, predictions)}
                 st.session_state["anomaly_scores_isoforest"] = {fn: s for fn, s in zip(all_file_names, anomaly_scores)}
+                st.session_state["normalized_signals_by_bead"] = normalized_signals_by_bead
+                st.session_state["raw_signals_by_bead"] = raw_signals_by_bead
 
 if "anomaly_results_isoforest" in st.session_state:
     if st.button("Generate Result"):
@@ -225,7 +236,13 @@ if "anomaly_results_isoforest" in st.session_state:
             end_idx = bead_info["end_index"]
 
             df = pd.read_csv(file_name)
-            signal = df.iloc[start_idx:end_idx + 1, 0].values
+            raw_signal = df.iloc[start_idx:end_idx + 1, 0].values
+
+            # Retrieve either raw or normalized signal
+            if use_normalized_signal:
+                signal = st.session_state["normalized_signals_by_bead"][selected_bead]
+            else:
+                signal = raw_signal
 
             status = st.session_state["anomaly_results_isoforest"].get((file_name, selected_bead), "normal")
             anomaly_score = st.session_state["anomaly_scores_isoforest"].get((file_name, selected_bead), 0)
