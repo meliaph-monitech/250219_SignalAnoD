@@ -177,7 +177,8 @@ if "cluster_results" in st.session_state:
         file_names = [seg["file"] for seg in bead_segments]
         
         # Sort bead_segments by cluster number for proper legend ordering
-        bead_segments_sorted = sorted(bead_segments, key=lambda seg: cluster_results[seg["file"]])
+        # bead_segments_sorted = sorted(bead_segments, key=lambda seg: cluster_results[seg["file"]])
+        bead_segments_sorted = sorted(bead_segments, key=lambda seg: cluster_results[seg["file"]], reverse=True)
         
         fig = go.Figure()
         
