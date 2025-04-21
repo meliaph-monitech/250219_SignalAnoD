@@ -170,7 +170,7 @@ if "cluster_results" in st.session_state:
     
     bead_data = st.session_state["chosen_bead_data"]
     cluster_results = st.session_state["cluster_results"]
-    colors = ["blue", "green", "red", "purple", "orange", "brown", "pink", "gray", "olive", "cyan"]
+    colors = ["red", "blue", "green", "purple", "orange", "brown", "pink", "gray", "olive", "cyan"]
 
     for bead_number in set(seg["bead_number"] for seg in bead_data):
         bead_segments = [seg for seg in bead_data if seg["bead_number"] == bead_number]
