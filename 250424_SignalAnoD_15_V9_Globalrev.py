@@ -103,7 +103,7 @@ def extract_advanced_features(signal):
 
 
 st.set_page_config(layout="wide")
-st.title("Laser Welding Anomaly Detection V9 - Global Analysis with Feature Selection")
+st.title("Laser Welding Anomaly Detection V15 - Global Analysis with Feature Selection")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -113,11 +113,23 @@ with st.sidebar:
         csv_files, extract_dir = extract_zip("temp.zip")
         st.success(f"Extracted {len(csv_files)} CSV files")
         
+        # Load the first CSV file as a sample to get column names
         df_sample = pd.read_csv(csv_files[0])
         columns = df_sample.columns.tolist()
-        column_to_analyze = st.selectbox("Select column for signal analysis", columns)
+        if len(columns) < 2:
+            st.error("The CSV files must have at least two columns for this application.")
+            st.stop()
         
-        filter_column = column_to_analyze
+        # Add an option to choose between the first or second column
+        column_to_analyze_option = st.radio(
+            "Select which column to analyze:",
+            options=["First Column", "Second Column"]
+        )
+        if column_to_analyze_option == "First Column":
+            column_to_analyze = columns[0]
+        else:
+            column_to_analyze = columns[1]
+        
         threshold = st.number_input("Enter filtering threshold", value=0.0)
 
         feature_names = ["Mean Value", "STD Value", "Min Value", "Max Value", "Median Value", "Skewness", "Kurtosis", "Peak-to-Peak", "Energy", "Coefficient of Variation (CV)",
@@ -143,7 +155,7 @@ with st.sidebar:
                 metadata = []
                 for file in csv_files:
                     df = pd.read_csv(file)
-                    segments = segment_beads(df, filter_column, threshold)
+                    segments = segment_beads(df, column_to_analyze, threshold)
                     if segments:
                         bead_segments[file] = segments
                         for bead_num, (start, end) in enumerate(segments, start=1):
@@ -162,7 +174,7 @@ with st.sidebar:
                 for entry in st.session_state["metadata"]:
                     df = pd.read_csv(entry["file"])
                     bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
-                    features = extract_advanced_features(bead_segment[filter_column].values)
+                    features = extract_advanced_features(bead_segment[column_to_analyze].values)
                     bead_number = entry["bead_number"]
                     features_by_bead[bead_number].append([features[i] for i in selected_indices])
                     files_by_bead[bead_number].append((entry["file"], bead_number))
@@ -214,7 +226,7 @@ if "anomaly_results_isoforest" in st.session_state:
             start_idx = bead_info["start_index"]
             end_idx = bead_info["end_index"]
             df = pd.read_csv(file_name)
-            signal = df.iloc[start_idx:end_idx + 1][filter_column].values
+            signal = df.iloc[start_idx:end_idx + 1, 0].values  # Use the first column for plotting, as originally requested.
             status = st.session_state["anomaly_results_isoforest"].get((file_name, selected_bead), "normal")
             anomaly_score = st.session_state["anomaly_scores_isoforest"].get((file_name, selected_bead), 0)
             color = 'red' if status == 'anomalous' else 'black'
